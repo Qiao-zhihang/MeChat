@@ -1,0 +1,3891 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>MeChat - 开放世界通讯</title>
+    <link rel="icon" type="image/png" href="/public/og-image.png">
+    <link rel="shortcut icon" type="image/png" href="/public/og-image.png">
+    <meta property="og:title" content="MeChat - 开放世界通讯">
+    <meta property="og:description" content="2D开放世界实时聊天应用">
+    <meta property="og:image" content="/public/og-image.png">
+    <meta property="og:type" content="website">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MeChat">
+    <meta name="theme-color" content="#007aff">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.62);
+            --glass-border: rgba(255, 255, 255, 0.48);
+            --glass-highlight: rgba(255, 255, 255, 0.8);
+            --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+            --glass-shadow-lg: 0 24px 80px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
+            --primary: #007aff;
+            --primary-active: #0056b3;
+            --text: #1d1d1f;
+            --text-secondary: #515154;
+            --text-tertiary: #86868b;
+            --accent-red: #ff3b30;
+            --accent-green: #30d158;
+            --radius-xl: 22px;
+            --radius-lg: 16px;
+            --radius-md: 12px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            overflow: hidden;
+            font-family: -apple-system, 'Noto Sans SC', 'Helvetica Neue', sans-serif;
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        .font-orbitron { font-family: 'Orbitron', monospace; }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background:
+                radial-gradient(ellipse 80% 70% at 25% 5%, rgba(180, 200, 240, 0.12) 0%, transparent 55%),
+                radial-gradient(ellipse 60% 50% at 80% 95%, rgba(210, 190, 235, 0.1) 0%, transparent 50%),
+                #f5f6f9;
+        }
+        
+        #worldCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        
+        #entryScreen {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .entry-card {
+            position: relative;
+            z-index: 10;
+            background: var(--glass-bg);
+            backdrop-filter: url(#lg-lg) blur(40px) saturate(180%) brightness(1.02);
+            -webkit-backdrop-filter: blur(60px) saturate(180%) brightness(1.02);
+            border-radius: var(--radius-xl);
+            padding: 32px 36px;
+            width: 100%;
+            max-width: 400px;
+            margin: 20px;
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow-lg);
+            animation: cardEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        
+        .entry-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background: linear-gradient(165deg, rgba(255,255,255,0.5) 0%, transparent 40%);
+            pointer-events: none;
+        }
+        
+        @keyframes cardEnter {
+            from { opacity: 0; transform: translateY(24px) scale(0.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        
+        .title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            text-align: center;
+            letter-spacing: 4px;
+            margin: 0 0 2px 0;
+            background: linear-gradient(135deg, var(--text) 0%, #5a5a6e 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: var(--text-tertiary);
+            font-size: 0.78rem;
+            letter-spacing: 4px;
+            margin-bottom: 20px;
+            font-weight: 400;
+        }
+        
+        .avatar-upload {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 18px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.03);
+            border: 1.5px solid rgba(0, 0, 0, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .avatar-upload::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(255,255,255,0.6) 0%, transparent 60%);
+            pointer-events: none;
+        }
+        
+        .avatar-upload:hover {
+            border-color: rgba(0, 122, 255, 0.3);
+            background: rgba(0, 122, 255, 0.04);
+            transform: scale(1.03);
+        }
+        
+        .avatar-upload:hover .avatar-inner i { color: var(--primary); }
+        
+        .avatar-inner {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .avatar-inner i {
+            font-size: 1.4rem;
+            color: var(--text-tertiary);
+            transition: color 0.3s ease;
+        }
+        
+        .input-group { margin-bottom: 16px; }
+        
+        .input-label {
+            display: block;
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+        
+        .input-field {
+            width: 100%;
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.03);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: var(--radius-md);
+            color: var(--text);
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.25s ease;
+        }
+        
+        .input-field::placeholder { color: var(--text-tertiary); }
+        
+        .input-field:focus {
+            border-color: var(--primary);
+            background: rgba(0, 122, 255, 0.04);
+            box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+        }
+        
+        .enter-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary);
+            border: none;
+            border-radius: var(--radius-md);
+            color: white;
+            font-family: 'Orbitron', monospace;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+            overflow: hidden;
+            letter-spacing: 2px;
+        }
+        
+        .enter-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .enter-btn:disabled:hover { transform: none; box-shadow: none; }
+        
+        .enter-btn:hover:not(:disabled) {
+            background: var(--primary-active);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 24px rgba(0, 122, 255, 0.3), 0 2px 6px rgba(0, 0, 0, 0.06);
+        }
+        
+        .enter-btn.loading { pointer-events: none; opacity: 0.92; }
+        .enter-btn.loading .btn-text { opacity: 0; }
+        
+        .enter-btn::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            margin: -10px 0 0 -10px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        
+        .enter-btn.loading::after {
+            opacity: 1;
+            animation: btnSpin 0.7s linear infinite;
+        }
+        
+        @keyframes btnSpin { to { transform: rotate(360deg); } }
+        
+        .online-badge {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 16px;
+            background: var(--glass-bg);
+            backdrop-filter: url(#lg) blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: 999px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            box-shadow: var(--glass-shadow);
+            animation: fadeIn 0.4s ease;
+        }
+        
+        .online-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 6px rgba(48, 209, 88, 0.4);
+        }
+        
+        .user-card {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 14px 7px 8px;
+            background: var(--glass-bg);
+            backdrop-filter: url(#lg) blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: 999px;
+            font-size: 0.82rem;
+            color: var(--text);
+            font-weight: 500;
+            box-shadow: var(--glass-shadow);
+            animation: fadeIn 0.4s ease;
+        }
+        
+        .user-card-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 1.5px solid rgba(255,255,255,0.6);
+            flex-shrink: 0;
+        }
+        
+        .user-card-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 120px;
+        }
+        
+        .coords-display {
+            position: fixed;
+            bottom: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            padding: 8px 20px;
+            background: var(--glass-bg);
+            backdrop-filter: url(#lg) blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: 999px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            letter-spacing: 2px;
+            font-weight: 500;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: var(--glass-shadow);
+            transition: all 0.25s ease;
+        }
+        
+        .coords-display:hover {
+            background: rgba(255, 255, 255, 0.72);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .controls-hint {
+            position: fixed;
+            bottom: 66px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 16px;
+            padding: 8px 18px;
+            background: var(--glass-bg);
+            backdrop-filter: url(#lg) blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: 999px;
+            font-size: 0.76rem;
+            color: var(--text-tertiary);
+            font-weight: 500;
+            pointer-events: none;
+            box-shadow: var(--glass-shadow);
+        }
+        
+        .controls-hint.hint-hidden { display: none !important; }
+        
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        .controls-hint kbd {
+            background: rgba(0, 0, 0, 0.04);
+            padding: 1px 6px;
+            border-radius: 5px;
+            font-family: 'Orbitron', monospace;
+            font-size: 0.7rem;
+            margin-right: 4px;
+            color: var(--primary);
+            font-weight: 600;
+        }
+        
+        .message-input-container {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(150%);
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 50;
+        }
+        
+        .message-input-container.active { transform: translateX(-50%) translateY(0); }
+        
+        .message-input-wrapper {
+            max-width: 520px;
+            margin: 0 auto;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            padding: 6px 8px 6px 16px;
+            background: var(--glass-bg);
+            backdrop-filter: url(#lg) blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: 999px;
+            box-shadow: var(--glass-shadow);
+        }
+        
+        .message-input {
+            flex: 1;
+            padding: 10px 16px;
+            background: transparent;
+            border: none;
+            border-radius: 999px;
+            color: var(--text);
+            font-size: 1rem;
+            outline: none;
+        }
+        
+        .message-input::placeholder { color: var(--text-tertiary); }
+        
+        .message-input:focus {
+            box-shadow: none;
+        }
+        
+        .send-btn, .cancel-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            flex-shrink: 0;
+        }
+        
+        .send-btn {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .send-btn:hover {
+            background: var(--primary-active);
+            transform: scale(1.06);
+            box-shadow: 0 4px 16px rgba(0, 122, 255, 0.3);
+        }
+        
+        .cancel-btn {
+            background: rgba(0, 0, 0, 0.03);
+            color: var(--text-tertiary);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+        }
+        
+        .cancel-btn:hover {
+            background: rgba(255, 59, 48, 0.06);
+            color: var(--accent-red);
+            border-color: rgba(255, 59, 48, 0.12);
+        }
+        
+        .dialog-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .dialog-overlay.active { opacity: 1; visibility: visible; }
+        
+        .dialog {
+            background: var(--glass-bg);
+            backdrop-filter: url(#lg) blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(60px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: 30px;
+            width: 90%;
+            max-width: 400px;
+            transform: scale(0.94);
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: var(--glass-shadow-lg);
+        }
+
+        .dialog-overlay.active .dialog { transform: scale(1); }
+        
+        .dialog-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin: 0 0 20px 0;
+            text-align: center;
+            color: var(--text);
+        }
+        
+        .dialog-input {
+            width: 100%;
+            padding: 13px 15px;
+            margin-bottom: 12px;
+            background: rgba(0, 0, 0, 0.03);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: var(--radius-md);
+            color: var(--text);
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.25s ease;
+        }
+        
+        .dialog-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+        }
+        
+        .dialog-buttons { display: flex; gap: 10px; margin-top: 20px; justify-content: center; }
+        
+        .dialog-btn {
+            flex: 0 1 auto;
+            min-width: 100px;
+            padding: 13px 24px;
+            border-radius: var(--radius-md);
+            font-size: 0.93rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            border: none;
+        }
+        
+        .dialog-btn.primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .dialog-btn.primary:hover {
+            background: var(--primary-active);
+        }
+        
+        .dialog-btn.secondary {
+            background: rgba(0, 0, 0, 0.03);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            color: var(--primary);
+        }
+        
+        .dialog-btn.secondary:hover { background: rgba(0, 122, 255, 0.06); }
+        
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 300;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .modal-overlay.active { opacity: 1; visibility: visible; }
+        
+        .modal {
+            background: var(--glass-bg);
+            backdrop-filter: url(#lg) blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(60px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: 26px;
+            width: 90%;
+            max-width: 480px;
+            transform: scale(0.94) translateY(12px);
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: var(--glass-shadow-lg);
+        }
+        
+        .modal-overlay.active .modal { transform: scale(1) translateY(0); }
+        
+        .modal-header { display: flex; align-items: flex-start; margin-bottom: 16px; }
+        
+        .modal-author {
+            font-weight: 600;
+            font-size: 1.05rem;
+            color: var(--text);
+        }
+        
+        .modal-time { color: var(--text-tertiary); font-size: 0.8rem; }
+        
+        .modal-content {
+            color: var(--text-secondary);
+            line-height: 1.7;
+            margin-bottom: 20px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        
+        .modal-close {
+            width: 100%;
+            padding: 13px;
+            background: rgba(0, 0, 0, 0.03);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: var(--radius-md);
+            color: var(--primary);
+            cursor: pointer;
+            transition: all 0.25s ease;
+            font-size: 0.93rem;
+            font-weight: 500;
+        }
+        
+        .modal-close:hover { background: rgba(0, 0, 0, 0.05); }
+        
+        .auth-tabs {
+            display: flex;
+            position: relative;
+            margin-bottom: 18px;
+            background: rgba(240, 242, 245, 0.6);
+            border-radius: 12px;
+            padding: 3px;
+        }
+        
+        .auth-tab {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            background: transparent;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.25s ease;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .auth-tab.active { color: var(--primary); font-weight: 600; }
+        
+        .auth-tab-indicator {
+            position: absolute;
+            top: 4px; left: 4px;
+            width: calc(50% - 4px);
+            height: calc(100% - 8px);
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        
+        .auth-tab-indicator.right { transform: translateX(100%); }
+        
+        .auth-panel { animation: fadeIn 0.25s ease; }
+        
+        .guest-link {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 0.85rem;
+            color: var(--primary);
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+        
+        .guest-link:hover { opacity: 1; text-decoration: underline; }
+        
+        .profile-panel {
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 380px;
+            max-width: 90vw;
+            height: 100vh;
+            z-index: 200;
+            background: var(--glass-bg);
+            backdrop-filter: url(#lg) blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border-left: 1px solid var(--glass-border);
+            box-shadow: -8px 0 32px rgba(0,0,0,0.1);
+            transition: right 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .profile-panel.open { right: 0; }
+        
+        .profile-panel-inner { display: flex; flex-direction: column; gap: 18px; }
+        
+        .profile-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        
+        .profile-header h3 { font-size: 1.15rem; font-weight: 700; color: var(--text); }
+        
+        .profile-close {
+            width: 32px; height: 32px;
+            border: none;
+            background: rgba(0,0,0,0.05);
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            transition: background 0.2s;
+        }
+        
+        .profile-close:hover { background: rgba(0,0,0,0.1); }
+        
+        .profile-avatar-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 14px;
+            background: rgba(0,0,0,0.03);
+            border-radius: 14px;
+        }
+        
+        .profile-avatar-upload {
+            width: 64px; height: 64px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #e0e5ec, #f0f3f6);
+            border: 2px dashed #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            overflow: hidden;
+            flex-shrink: 0;
+            transition: border-color 0.2s;
+        }
+        
+        .profile-avatar-upload:hover { border-color: var(--primary); }
+        
+        .profile-info { display: flex; flex-direction: column; gap: 2px; }
+        
+        .profile-username { font-weight: 600; font-size: 1rem; color: var(--text); }
+        
+        .profile-id { font-size: 0.78rem; color: var(--text-secondary); font-family: monospace; }
+        
+        .profile-fields { display: flex; flex-direction: column; gap: 14px; }
+        
+        .bio-field {
+            min-height: 60px;
+            resize: vertical;
+            line-height: 1.5;
+            padding: 10px 16px;
+        }
+        
+        .color-picker-row { display: flex; flex-direction: column; gap: 8px; }
+        
+        .color-picker {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .color-dot {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.15s, border-color 0.15s;
+        }
+        
+        .color-dot:hover { transform: scale(1.15); }
+        
+        .color-dot.selected { border-color: var(--text); transform: scale(1.15); }
+        
+        .profile-divider {
+            height: 1px;
+            background: rgba(0,0,0,0.06);
+            margin: 4px 0;
+        }
+        
+        .profile-section h4 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 10px;
+        }
+        
+        .friends-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 260px;
+            overflow-y: auto;
+        }
+        
+        .friend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: rgba(0,0,0,0.03);
+            border-radius: 10px;
+            transition: background 0.2s;
+        }
+        
+        .friend-item:hover { background: rgba(0,0,0,0.06); }
+        
+        .friend-avatar {
+            width: 34px; height: 34px;
+            border-radius: 50%;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+        
+        .friend-avatar-placeholder {
+            width: 34px; height: 34px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+        
+        .friend-info { flex: 1; min-width: 0; }
+        
+        .friend-name { font-size: 0.88rem; font-weight: 500; color: var(--text); }
+        
+        .friend-bio { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        
+        .friend-remove-btn {
+            width: 26px; height: 26px;
+            border: none;
+            background: transparent;
+            border-radius: 50%;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        
+        .friend-remove-btn:hover { background: rgba(239,68,68,0.1); color: #ef4444; }
+        
+        .request-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: rgba(0,0,0,0.03);
+            border-radius: 10px;
+        }
+        
+        .request-actions {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        
+        .request-btn {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        
+        .request-btn.accept { background: var(--accent-green); color: white; }
+        .request-btn.accept:hover { opacity: 0.85; transform: scale(1.05); }
+        .request-btn.reject { background: rgba(0,0,0,0.06); color: var(--text-secondary); }
+        .request-btn.reject:hover { background: rgba(239,68,68,0.08); color: #ef4444; }
+        
+        .empty-hint {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            padding: 20px 0;
+        }
+        
+        .context-menu {
+            position: fixed;
+            z-index: 300;
+            min-width: 160px;
+            background: var(--glass-bg);
+            backdrop-filter: url(#lg) blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(30px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            box-shadow: var(--glass-shadow), 0 8px 24px rgba(0,0,0,0.12);
+            padding: 6px;
+            animation: fadeIn 0.15s ease;
+        }
+        
+        .context-menu-item {
+            padding: 10px 14px;
+            font-size: 0.85rem;
+            color: var(--text);
+            cursor: pointer;
+            border-radius: 8px;
+            transition: background 0.15s;
+            display: block;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+        }
+        
+        .context-menu-item:hover { background: rgba(0,0,0,0.05); }
+        
+        .context-menu-item.danger { color: #ef4444; }
+        
+        .context-menu-item.danger:hover { background: rgba(239,68,68,0.08); }
+        
+        .dm-panel {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            width: 320px;
+            max-height: 420px;
+            background: var(--glass-bg);
+            backdrop-filter: url(#lg) blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%) brightness(1.02);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--glass-shadow-lg), 0 12px 36px rgba(0,0,0,0.15);
+            display: flex;
+            flex-direction: column;
+            z-index: 200;
+            animation: dmSlideIn 0.25s cubic-bezier(0.16,1,0.3,1);
+        }
+        
+        @keyframes dmSlideIn {
+            from { opacity: 0; transform: translateY(16px) scale(0.96); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        
+        .dm-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+            font-weight: 600;
+            font-size: 0.88rem;
+            color: var(--text);
+        }
+        
+        .dm-close-btn {
+            background: none; border: none; font-size: 1.4rem; cursor: pointer;
+            color: var(--text-tertiary); line-height: 1; padding: 2px 6px;
+        }
+        .dm-close-btn:hover { color: var(--text); }
+        .dm-clear-btn {
+            background: none; border: none; font-size: 0.9rem; cursor: pointer;
+            color: var(--text-tertiary); line-height: 1; padding: 4px 6px; border-radius: 6px;
+            transition: all 0.15s;
+        }
+        .dm-clear-btn:hover { color: var(--accent-red); background: rgba(239,68,68,0.08); }
+        
+        .dm-messages {
+            flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;
+            min-height: 180px; max-height: 280px;
+        }
+        .dm-msg-bubble {
+            padding: 8px 13px; border-radius: 14px; max-width: 85%; word-break: break-word;
+            font-size: 0.84rem; line-height: 1.5; animation: fadeIn 0.15s ease;
+        }
+        .dm-msg-from { align-self: flex-start; background: rgba(240,242,245,0.95); color: #1d1d1f; }
+        .dm-msg-to { align-self: flex-end; background: var(--accent-blue); color: #1d1d1f; }
+        .dm-msg-time { font-size: 0.68rem; color: var(--text-tertiary); margin-top: 3px; text-align: right; }
+        
+        .dm-input-row {
+            display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid rgba(0,0,0,0.06);
+        }
+        #dmInput {
+            flex: 1; padding: 8px 12px; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px;
+            outline: none; font-size: 0.82rem; background: rgba(255,255,255,0.7);
+        }
+        #dmInput:focus { border-color: var(--accent-blue); }
+        .dm-send-btn {
+            width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--accent-blue);
+            color: white; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: transform 0.15s; flex-shrink: 0;
+        }
+        .dm-send-btn:hover { transform: scale(1.08); }
+
+        .admin-tag {
+            display: inline-block; font-size: 0.6rem; padding: 1px 5px;
+            background: linear-gradient(135deg, #f97316, #ea580c); color: white;
+            border-radius: 4px; margin-left: 4px; vertical-align: middle;
+            font-weight: 600; letter-spacing: 0.5px;
+        }
+        .super-admin-tag {
+            display: inline-block; font-size: 0.6rem; padding: 1px 6px;
+            background: linear-gradient(135deg, #eab308, #ca8a04); color: white;
+            border-radius: 4px; margin-left: 4px; vertical-align: middle;
+            font-weight: 700; letter-spacing: 0.5px;
+        }
+        .admin-toggle-btn {
+            display: inline-block; font-size: 0.68rem; padding: 2px 8px;
+            border-radius: 4px; cursor: pointer; transition: all 0.15s; border: 1px solid rgba(0,0,0,0.1);
+        }
+        .admin-toggle-btn.set { background: rgba(34,197,94,0.08); color: #16a34a; border-color: rgba(34,197,94,0.3); }
+        .admin-toggle-btn.set:hover { background: rgba(34,197,94,0.15); }
+        .admin-toggle-btn.unset { background: rgba(239,68,68,0.06); color: #dc2626; border-color: rgba(239,68,68,0.25); }
+        .admin-toggle-btn.unset:hover { background: rgba(239,68,68,0.12); }
+        .admin-msg { border-left: 3px solid #f97316 !important; background: rgba(249,115,22,0.06) !important; }
+        .admin-msg-author { color: #f97316 !important; font-weight: 600; }
+        .admin-msg-author::after { content: ' 管理员'; font-size: 0.65rem; color: #f97316; font-weight: 400; }
+        .context-menu-divider { height: 1px; background: rgba(0,0,0,0.08); margin: 4px 8px; }
+        .key-dialog-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 10000;
+            display: flex; align-items: center; justify-content: center;
+            animation: fadeIn 0.15s ease;
+        }
+        .key-dialog {
+            background: white; border-radius: 16px; padding: 28px 32px;
+            width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            animation: slideUp 0.2s ease;
+        }
+        .key-dialog-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 16px; color: #1d1d1f; }
+        .key-dialog-body p { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 10px; }
+        .key-dialog-body input {
+            width: 100%; padding: 10px 14px; border: 2px solid rgba(0,0,0,0.1);
+            border-radius: 10px; font-size: 0.9rem; outline: none; transition: border-color 0.2s;
+            box-sizing: border-box;
+        }
+        .key-dialog-body input:focus { border-color: var(--accent-blue); }
+        .key-error { color: #ef4444; font-size: 0.78rem; display: block; margin-top: 6px; }
+        .key-dialog-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+        .key-btn {
+            padding: 8px 20px; border: none; border-radius: 8px; font-size: 0.85rem;
+            cursor: pointer; font-weight: 500; transition: all 0.15s;
+        }
+        .key-btn-cancel { background: rgba(0,0,0,0.06); color: var(--text-secondary); }
+        .key-btn-cancel:hover { background: rgba(0,0,0,0.12); }
+        .key-btn-confirm { background: #ef4444; color: white; }
+        .key-btn-confirm:hover { background: #dc2626; }
+        .admin-panel {
+            position: fixed; right: -420px; top: 0; bottom: 0; width: 400px;
+            background: rgba(255,255,255,0.95); backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: -10px 0 40px rgba(0,0,0,0.12); z-index: 900;
+            display: flex; flex-direction: column; transition: right 0.3s cubic-bezier(0.4,0,0.2,1);
+        }
+        .admin-panel.open { right: 0; }
+        .admin-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 18px 22px; border-bottom: 1px solid rgba(0,0,0,0.06);
+            font-weight: 700; font-size: 1rem; color: #1d1d1f;
+        }
+        .admin-header button {
+            background: none; border: none; font-size: 1.5rem; cursor: pointer;
+            color: var(--text-secondary); line-height: 1; padding: 0 4px;
+        }
+        .admin-header button:hover { color: var(--text-primary); }
+        .admin-tabs { display: flex; padding: 8px 12px; gap: 4px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+        .admin-tab {
+            padding: 7px 12px; border: none; border-radius: 8px; font-size: 0.78rem;
+            cursor: pointer; background: transparent; color: var(--text-secondary);
+            transition: all 0.15s; font-weight: 500;
+        }
+        .admin-tab:hover { background: rgba(0,0,0,0.04); }
+        .admin-tab.active { background: rgba(249,115,22,0.1); color: #ea580c; font-weight: 600; }
+        .admin-content { flex: 1; overflow-y: auto; padding: 16px; }
+        .admin-tab-content { display: none; }
+        .admin-tab-content.active { display: block; }
+        .admin-tab-content textarea {
+            width: 100%; padding: 12px; border: 2px solid rgba(0,0,0,0.12);
+            border-radius: 10px; resize: vertical; font-size: 0.85rem; outline: none;
+            box-sizing: border-box; font-family: inherit; margin-bottom: 10px;
+            background: #f8f9fa; color: #1d1d1f;
+        }
+        .admin-tab-content textarea::placeholder { color: #9ca3af; }
+        .admin-tab-content textarea:focus { border-color: #3b82f6; background: #fff; }
+        .admin-btn {
+            padding: 9px 18px; border: none; border-radius: 8px; font-size: 0.82rem;
+            cursor: pointer; font-weight: 600; transition: all 0.15s;
+        }
+        .admin-btn.primary { background: #3b82f6; color: white; box-shadow: 0 1px 4px rgba(59,130,246,0.35); }
+        .admin-btn.primary:hover { background: #2563eb; box-shadow: 0 2px 8px rgba(59,130,246,0.45); }
+        .admin-btn.warning { background: #f59e0b; color: white; }
+        .admin-btn.warning:hover { background: #d97706; }
+        .admin-btn.danger { background: #ef4444; color: white; }
+        .admin-btn.danger:hover { background: #dc2626; }
+        .admin-btn.small { padding: 5px 12px; font-size: 0.75rem; background: rgba(0,0,0,0.06); color: var(--text-secondary); }
+        .admin-btn.small:hover { background: rgba(0,0,0,0.12); }
+        .admin-search-row { display: flex; gap: 8px; margin-bottom: 12px; }
+        .admin-search-row input {
+            flex: 1; padding: 7px 12px; border: 2px solid rgba(0,0,0,0.08);
+            border-radius: 8px; font-size: 0.82rem; outline: none;
+        }
+        .admin-search-row input:focus { border-color: var(--accent-blue); }
+        .admin-user-list { max-height: 300px; overflow-y: auto; }
+        .admin-user-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 12px; border-radius: 8px; margin-bottom: 4px;
+            background: rgba(0,0,0,0.02); cursor: pointer; transition: background 0.15s;
+        }
+        .admin-user-item:hover { background: rgba(0,0,0,0.06); }
+        .admin-user-item-name { font-size: 0.84rem; font-weight: 500; }
+        .admin-user-item-id { font-size: 0.68rem; color: var(--text-tertiary); }
+        .admin-user-info {
+            margin-top: 14px; padding: 14px; border-radius: 10px;
+            background: rgba(0,0,0,0.03); font-size: 0.82rem;
+        }
+        .admin-user-info h4 { margin-bottom: 10px; color: #1d1d1f; }
+        .admin-user-info p { margin: 4px 0; color: var(--text-secondary); }
+        .admin-list-area { max-height: 200px; overflow-y: auto; margin-bottom: 10px; }
+        .admin-list-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 7px 10px; background: rgba(0,0,0,0.02); border-radius: 6px;
+            margin-bottom: 3px; font-size: 0.78rem;
+        }
+        .admin-list-item .name { font-weight: 500; }
+        .admin-list-item .reason { color: var(--text-tertiary); font-size: 0.72rem; }
+        .admin-list-item .action-btn {
+            padding: 3px 10px; border: none; border-radius: 5px; font-size: 0.7rem;
+            cursor: pointer; background: var(--accent-green); color: white;
+        }
+        .admin-system-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .admin-system-row label { font-size: 0.84rem; color: var(--text-secondary); white-space: nowrap; }
+        .admin-system-row input[type="number"] {
+            width: 60px; padding: 6px 8px; border: 2px solid rgba(0,0,0,0.08);
+            border-radius: 6px; font-size: 0.82rem; text-align: center;
+        }
+        .broadcast-toast {
+            position: fixed; top: 30px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(135deg, #f97316, #ea580c); color: white;
+            padding: 14px 28px; border-radius: 12px; font-size: 0.92rem;
+            font-weight: 600; z-index: 11000; box-shadow: 0 8px 30px rgba(249,115,22,0.35);
+            animation: broadcastIn 0.3s ease; pointer-events: none; max-width: 500px; text-align: center;
+        }
+        @keyframes broadcastIn { from { opacity: 0; transform: translateX(-50%) translateY(-15px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+        /* 移动端基础样式（仅保留必要的，不使用定位规则） */
+        @media (max-width: 768px) {
+            .entry-card {
+                padding: 20px;
+                margin: 10px;
+                max-width: calc(100% - 20px);
+                border-radius: 16px;
+            }
+
+            .title { font-size: 1.2rem; letter-spacing: 2px; }
+            .subtitle { font-size: 0.7rem; margin-bottom: 14px; }
+            .avatar-upload { width: 60px; height: 60px; }
+            .input-field { padding: 12px; font-size: 16px; }
+            .enter-btn { padding: 13px; font-size: 0.9rem; }
+
+            .controls-hint { display: none !important; }
+
+            /* 面板基础样式 */
+            .profile-panel,
+            .admin-panel,
+            .dm-panel {
+                width: 100% !important;
+                left: 0 !important;
+                right: 0 !important;
+                border-radius: 16px 16px 0 0 !important;
+            }
+
+            .context-menu {
+                width: calc(100% - 32px);
+                max-width: 300px;
+                left: 16px !important;
+                right: 16px !important;
+            }
+
+            .dialog-overlay .dialog,
+            .modal-overlay .modal {
+                width: calc(100% - 32px);
+                max-width: 320px;
+            }
+            .dialog-overlay.active .dialog {
+                transform: translate(-50%, -50%) scale(1) !important;
+            }
+            .broadcast-toast { max-width: calc(100% - 32px); font-size: 0.82rem; }
+
+            /* 移动端消息输入框紧凑化 */
+            .message-input-wrapper {
+                padding: 4px 6px 4px 12px !important;
+                gap: 6px !important;
+            }
+            .message-input {
+                padding: 8px 10px !important;
+                font-size: 0.88rem !important;
+            }
+            .send-btn, .cancel-btn {
+                width: 34px !important;
+                height: 34px !important;
+                font-size: 14px !important;
+            }
+        }
+
+        /* 虚拟摇杆样式 */
+        #joystick-zone {
+            position: fixed;
+            z-index: 9999;
+            pointer-events: auto;
+            touch-action: none;
+            display: none;
+        }
+
+        #joystick-canvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            display: block;
+        }
+
+        /* 移动端操作按钮 - 精致设计 */
+        #mobile-actions {
+            position: fixed;
+            z-index: 9999;
+            pointer-events: auto;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .mobile-action-btn {
+            width: 52px;
+            height: 52px;
+            border-radius: 16px;
+            border: none;
+            background: linear-gradient(145deg, rgba(255,255,255,0.95), rgba(255,255,255,0.85));
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow:
+                0 4px 12px rgba(0,0,0,0.08),
+                0 1px 3px rgba(0,0,0,0.06),
+                inset 0 1px 0 rgba(255,255,255,0.9);
+            color: #007aff;
+            cursor: pointer;
+            touch-action: manipulation;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s cubic-bezier(0.4,0,0.2,1);
+            font-size: 20px;
+            font-weight: 500;
+        }
+
+        .mobile-action-btn:hover {
+            background: linear-gradient(145deg, rgba(240,247,255,0.98), rgba(235,245,255,0.92));
+            box-shadow:
+                0 6px 20px rgba(0,122,255,0.15),
+                0 2px 6px rgba(0,0,0,0.08),
+                inset 0 1px 0 rgba(255,255,255,0.95);
+            transform: translateY(-2px);
+        }
+
+        .mobile-action-btn:active {
+            transform: scale(0.94) translateY(0);
+            background: linear-gradient(145deg, rgba(0,122,255,0.12), rgba(0,122,255,0.08));
+            box-shadow:
+                0 2px 8px rgba(0,0,0,0.06),
+                inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .mobile-action-btn.message-active {
+            background: linear-gradient(145deg, #007aff, #0056b3);
+            color: white;
+            box-shadow:
+                0 4px 16px rgba(0,122,255,0.35),
+                0 2px 6px rgba(0,0,0,0.1),
+                inset 0 1px 0 rgba(255,255,255,0.25);
+        }
+
+        .mobile-action-btn.message-active:active {
+            background: linear-gradient(145deg, #0056b3, #004494);
+        }
+    </style>
+</head>
+<body>
+    <svg style="position:fixed;top:0;left:0;width:0;height:0;pointer-events:none;z-index:9998" colorInterpolationFilters="sRGB">
+        <defs>
+            <filter id="lg" filterUnits="userSpaceOnUse" x="-100" y="-100" width="400" height="300" colorInterpolationFilters="sRGB">
+                <feImage id="lg-map" width="200" height="150" result="map"/>
+                <feDisplacementMap in="SourceGraphic" in2="map" scale="12" xChannelSelector="R" yChannelSelector="G"/>
+            </filter>
+            <filter id="lg-lg" filterUnits="userSpaceOnUse" x="-120" y="-80" width="440" height="260" colorInterpolationFilters="sRGB">
+                <feImage id="lg-lg-map" width="220" height="130" result="map"/>
+                <feDisplacementMap in="SourceGraphic" in2="map" scale="18" xChannelSelector="R" yChannelSelector="G"/>
+            </filter>
+        </defs>
+    </svg>
+    <canvas id="lg-canvas" style="display:none"></canvas>
+    <div id="entryScreen">
+        <div class="entry-card">
+            <h1 class="title font-orbitron">MeChat</h1>
+            <p class="subtitle">探索 · 交流 · 连接</p>
+            
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">登录</button>
+                <button class="auth-tab" data-tab="register" onclick="switchAuthTab('register')">注册</button>
+                <div class="auth-tab-indicator"></div>
+            </div>
+            
+            <div id="loginPanel" class="auth-panel">
+                <div class="input-group">
+                    <label class="input-label">用户名</label>
+                    <input type="text" id="loginUsername" class="input-field" placeholder="输入用户名..." maxlength="20">
+                </div>
+                <div class="input-group">
+                    <label class="input-label">密码</label>
+                    <input type="password" id="loginPassword" class="input-field" placeholder="输入密码...">
+                </div>
+                <button id="loginButton" class="enter-btn font-orbitron"><span class="btn-text">登录</span></button>
+                <p class="guest-link" onclick="switchToGuest()">或以游客身份进入</p>
+            </div>
+            
+            <div id="registerPanel" class="auth-panel" style="display:none">
+                <div class="avatar-upload" onclick="document.getElementById('avatarInput').click()">
+                    <div class="avatar-inner">
+                        <i class="fas fa-user-plus"></i>
+                    </div>
+                    <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+                </div>
+                
+                <div class="input-group">
+                    <label class="input-label">用户名</label>
+                    <input type="text" id="regUsername" class="input-field" placeholder="设置用户名（至少2字符）..." maxlength="20">
+                </div>
+                <div class="input-group">
+                    <label class="input-label">密码</label>
+                    <input type="password" id="regPassword" class="input-field" placeholder="设置密码（至少4字符）..." maxlength="50">
+                </div>
+                <div class="input-group">
+                    <label class="input-label">昵称</label>
+                    <input type="text" id="nicknameInput" class="input-field" placeholder="设置昵称..." maxlength="20">
+                </div>
+                
+                <button id="registerButton" class="enter-btn font-orbitron"><span class="btn-text">注册并进入</span></button>
+                <p class="guest-link" onclick="switchToGuest()">或以游客身份进入</p>
+            </div>
+            
+            <div id="guestPanel" class="auth-panel" style="display:none">
+                <div class="avatar-upload" onclick="document.getElementById('guestAvatarInput').click()">
+                    <div class="avatar-inner">
+                        <i class="fas fa-user-plus"></i>
+                    </div>
+                    <input type="file" id="guestAvatarInput" accept="image/*" style="display: none;">
+                </div>
+                
+                <div class="input-group">
+                    <label class="input-label">游客昵称</label>
+                    <input type="text" id="guestNickname" class="input-field" placeholder="输入昵称..." maxlength="20">
+                </div>
+                
+                <button id="guestEnterButton" class="enter-btn font-orbitron"><span class="btn-text">进入世界</span></button>
+                <p class="guest-link" onclick="switchAuthTab('register')">返回注册 / 登录</p>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="worldCanvas"></canvas>
+
+    <!-- 移动端虚拟摇杆 -->
+    <div id="joystick-zone">
+        <canvas id="joystick-canvas" width="120" height="120"></canvas>
+    </div>
+
+    <!-- 移动端操作按钮 -->
+    <div id="mobile-actions">
+        <button id="mobile-message-btn" class="mobile-action-btn" title="发送消息">
+            <i class="fas fa-comment"></i>
+        </button>
+        <button id="mobile-profile-btn" class="mobile-action-btn" title="个人资料">
+            <i class="fas fa-user"></i>
+        </button>
+        <button id="mobile-zoom-in-btn" class="mobile-action-btn" title="放大">
+            <i class="fas fa-search-plus"></i>
+        </button>
+        <button id="mobile-zoom-out-btn" class="mobile-action-btn" title="缩小">
+            <i class="fas fa-search-minus"></i>
+        </button>
+    </div>
+
+    <div class="online-badge" style="display:none">
+        <div class="online-dot"></div>
+        <span id="onlineCount">0</span>
+        <span>人在线</span>
+    </div>
+
+    <div id="userCard" class="user-card" style="display:none" onclick="openProfilePanel()">
+        <img id="userCardAvatar" class="user-card-avatar" src="" alt="">
+        <span id="userCardName" class="user-card-name"></span>
+    </div>
+
+    <div id="profilePanel" class="profile-panel" style="display:none">
+        <div class="profile-panel-inner">
+            <div class="profile-header">
+                <h3>个人资料</h3>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <button id="adminPanelBtn" onclick="openAdminPanel()" style="display:none;padding:5px 12px;border:none;border-radius:6px;background:linear-gradient(135deg,#f97316,#ea580c);color:white;font-size:0.75rem;font-weight:600;cursor:pointer">🛡️ 管理面板</button>
+                    <button onclick="closeProfilePanel()" class="profile-close"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div class="profile-avatar-row">
+                <div class="profile-avatar-upload" onclick="document.getElementById('profileAvatarInput').click()">
+                    <img id="profileAvatarImg" src="" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;display:none;">
+                    <i class="fas fa-camera" id="profileCameraIcon"></i>
+                    <input type="file" id="profileAvatarInput" accept="image/*" style="display:none;">
+                </div>
+                <div class="profile-info">
+                    <span id="profileUsername" class="profile-username"></span>
+                    <span id="profileId" class="profile-id"></span>
+                </div>
+            </div>
+            <div class="profile-fields">
+                <div class="input-group">
+                    <label class="input-label">昵称</label>
+                    <input type="text" id="profileNickname" class="input-field" placeholder="昵称..." maxlength="20">
+                </div>
+                <div class="input-group">
+                    <label class="input-label">个性签名</label>
+                    <textarea id="profileBio" class="input-field bio-field" placeholder="写点什么..." maxlength="100"></textarea>
+                </div>
+                <div class="color-picker-row">
+                    <label class="input-label">主题色</label>
+                    <div id="colorPicker" class="color-picker"></div>
+                </div>
+            </div>
+            <button id="saveProfileBtn" class="enter-btn font-orbitron" style="width:100%"><span class="btn-text">保存</span></button>
+            
+            <div class="profile-divider"></div>
+            
+            <div class="profile-section">
+                <h4>好友申请 <span id="requestBadge" style="display:none;background:var(--accent-red);color:white;font-size:0.7rem;padding:1px 7px;border-radius:99px;margin-left:6px;">0</span></h4>
+                <div id="pendingRequestsList" class="friends-list">
+                    <p class="empty-hint">暂无申请</p>
+                </div>
+            </div>
+            
+            <div class="profile-divider"></div>
+            
+            <div class="profile-section">
+                <h4>好友列表</h4>
+                <div id="friendsList" class="friends-list">
+                    <p class="empty-hint">暂无好友</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="userContextMenu" class="context-menu" style="display:none">
+        <div class="context-menu-item" data-action="view_profile">查看资料</div>
+        <div class="context-menu-item" data-action="send_friend_request">添加好友</div>
+        <div class="context-menu-item" data-action="send_private_message" style="display:none">发送私信</div>
+        <div class="context-menu-item" data-action="remove_friend" style="display:none">移除好友</div>
+        <div class="context-menu-item danger" data-action="block_user">屏蔽用户</div>
+        <div class="context-menu-item" data-action="unblock_user" style="display:none">取消屏蔽</div>
+        <div class="context-menu-divider admin-only" style="display:none"></div>
+        <div class="context-menu-item danger admin-only" data-action="admin_mute" style="display:none">禁言用户</div>
+        <div class="context-menu-item admin-only" data-action="admin_unmute" style="display:none">取消禁言</div>
+        <div class="context-menu-item danger admin-only" data-action="admin_kick" style="display:none">踢出用户</div>
+        <div class="context-menu-item danger admin-only" data-action="admin_ban" style="display:none">封禁账号</div>
+        <div class="context-menu-item admin-only" data-action="admin_info" style="display:none">查看详情</div>
+    </div>
+
+    <div id="deleteKeyDialog" class="key-dialog-overlay" style="display:none">
+        <div class="key-dialog">
+            <div class="key-dialog-title">⚠️ 管理员操作确认</div>
+            <div class="key-dialog-body">
+                <p>请输入管理密钥以删除此消息：</p>
+                <input type="password" id="deleteKeyInput" placeholder="输入密钥..." autocomplete="off">
+                <span id="keyError" class="key-error" style="display:none">密钥错误</span>
+            </div>
+            <div class="key-dialog-actions">
+                <button id="keyCancelBtn" class="key-btn key-btn-cancel">取消</button>
+                <button id="keyConfirmBtn" class="key-btn key-btn-confirm">确认删除</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="adminPanel" class="admin-panel" style="display: none;">
+        <div class="admin-header"><span>🛡️ 管理面板</span><button id="adminCloseBtn">×</button></div>
+        <div class="admin-tabs">
+            <button class="admin-tab active" data-tab="broadcast">📢 公告</button>
+            <button class="admin-tab" data-tab="users">👥 用户</button>
+            <button class="admin-tab" data-tab="lists">📋 封禁/禁言</button>
+            <button class="admin-tab" data-tab="system">🧹 系统</button>
+        </div>
+        <div class="admin-content">
+            <div id="tab-broadcast" class="admin-tab-content active">
+                <textarea id="broadcastInput" placeholder="输入全服公告内容..." rows="3"></textarea>
+                <button id="sendBroadcastBtn" class="admin-btn primary">发送全服广播</button>
+            </div>
+            <div id="tab-users" class="admin-tab-content">
+                <div class="admin-search-row">
+                    <input type="text" id="adminUserSearch" placeholder="搜索用户...">
+                    <button id="refreshUsersBtn" class="admin-btn small">刷新列表</button>
+                </div>
+                <div id="adminUserList" class="admin-user-list"></div>
+                <div id="adminUserInfo" class="admin-user-info" style="display:none"></div>
+            </div>
+            <div id="tab-lists" class="admin-tab-content">
+                <h4>封禁列表</h4><div id="bannedList" class="admin-list-area"></div>
+                <h4>禁言列表</h4><div id="mutedList" class="admin-list-area"></div>
+                <button id="refreshListsBtn" class="admin-btn small">刷新列表</button>
+                <hr style="border:none;border-top:1px solid rgba(0,0,0,0.08);margin:10px 0">
+                <button id="kickGuestsBtn" class="admin-btn danger" style="width:100%">一键注销所有游客号</button>
+            </div>
+            <div id="tab-system" class="admin-tab-content">
+                <div class="admin-system-row">
+                    <label>清理天数：<input type="number" id="cleanupDays" value="30" min="1" max="365"></label>
+                    <button id="cleanupBtn" class="admin-btn warning">清理离线数据</button>
+                </div>
+                <button id="clearMsgBtn" class="admin-btn danger">清空所有聊天记录</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="dmPanel" class="dm-panel" style="display:none">
+        <div class="dm-header">
+            <span id="dmTargetName">私信</span>
+            <div style="display:flex;gap:8px;align-items:center">
+                <button id="dmClearBtn" class="dm-clear-btn" title="清空聊天记录"><i class="fas fa-trash-alt"></i></button>
+                <button id="dmCloseBtn" class="dm-close-btn">×</button>
+            </div>
+        </div>
+        <div id="dmMessages" class="dm-messages"></div>
+        <div class="dm-input-row">
+            <input type="text" id="dmInput" placeholder="输入私信..." autocomplete="off">
+            <button id="dmSendBtn" class="dm-send-btn"><i class="fas fa-paper-plane"></i></button>
+        </div>
+    </div>
+
+    <div id="coordinatesDisplay" class="coords-display font-orbitron" style="display:none">
+        X: <span id="xCoord">0</span> Y: <span id="yCoord">0</span>
+    </div>
+
+    <div class="controls-hint" style="display:none">
+        <div><kbd>WASD</kbd>移动</div>
+        <div><kbd>T</kbd>发送消息</div>
+        <div><kbd>滚轮</kbd>缩放视野</div>
+        <div><kbd>点击坐标</kbd>传送</div>
+        <div><kbd>H</kbd>显示/隐藏提示</div>
+    </div>
+
+    <div id="messageInputContainer" class="message-input-container">
+        <div class="message-input-wrapper">
+            <input type="text" id="messageInput" class="message-input" placeholder="写下你的留言..." maxlength="500">
+            <button id="sendButton" class="send-btn"><i class="fas fa-paper-plane"></i></button>
+            <button id="cancelButton" class="cancel-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="friend-only-toggle" style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:8px;padding:0 10px;">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.75rem;color:var(--text-tertiary);user-select:none;">
+                <input type="checkbox" id="friendOnlyToggle" style="accent-color:var(--accent-blue);cursor:pointer;width:14px;height:14px;">
+                仅好友可见
+            </label>
+        </div>
+    </div>
+
+    <div id="teleportDialog" class="dialog-overlay">
+        <div class="dialog">
+            <h3 class="dialog-title font-orbitron">坐标传送</h3>
+            <p style="color: rgba(29, 29, 31, 0.6); font-size: 0.85rem; margin-bottom: 20px; text-align: center;">
+                输入目标坐标进行传送
+            </p>
+            <input type="number" id="teleportX" class="dialog-input" placeholder="X 坐标">
+            <input type="number" id="teleportY" class="dialog-input" placeholder="Y 坐标">
+            <div class="dialog-buttons">
+                <button id="teleportConfirm" class="dialog-btn primary">传送</button>
+                <button id="teleportCancel" class="dialog-btn secondary">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="messageDetail" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <div>
+                    <div id="detailAuthor" class="modal-author"></div>
+                </div>
+                <div id="detailTime" class="modal-time"></div>
+            </div>
+            <p id="detailContent" class="modal-content"></p>
+            <button id="closeDetail" class="modal-close">关闭</button>
+        </div>
+    </div>
+
+    <script>
+
+        // ==================== 移动端自适应系统 v3.0 ====================
+        // 核心设计：基于视口百分比(vw/vh/vmin)的真正响应式布局
+
+        const MobileAdapter = {
+            isMobile: false,
+            joystick: null,
+            layout: null,
+
+            init() {
+                this.detectDevice();
+                if (this.isMobile) {
+                    this.enableMobileMode();
+                }
+                // 监听窗口变化
+                window.addEventListener('resize', this.debounce(() => this.handleResize(), 200));
+                // 监听屏幕旋转
+                screen.orientation?.addEventListener('change', () => setTimeout(() => this.updateLayout(), 100));
+            },
+
+            detectDevice() {
+                const ua = navigator.userAgent;
+                const width = window.innerWidth;
+                this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
+                               (width < 768 && ('ontouchstart' in window));
+                return this.isMobile;
+            },
+
+            enableMobileMode() {
+                console.log('📱 启用移动端模式');
+
+                // 登录界面存在时，不显示游戏UI元素
+                const entryScreen = document.getElementById('entryScreen');
+                const isOnLoginScreen = entryScreen && entryScreen.style.display !== 'none';
+
+                if (!isOnLoginScreen) {
+                    document.getElementById('joystick-zone').style.display = 'block';
+                    // 移动端操作按钮已禁用（用户不需要）
+                    // document.getElementById('mobile-actions').style.display = 'flex';
+
+                    this.showGameUI();
+                } else {
+                    console.log('📱 登录界面可见，隐藏游戏UI元素');
+                    this.hideGameUI();
+                }
+
+                this.layout = new ResponsiveLayout();
+                this.joystick = new JoystickController('joystick-canvas');
+
+                this.bindMobileEvents();
+
+                setTimeout(() => {
+                    this.updateLayout();
+                }, 100);
+            },
+
+            showGameUI() {
+                const elements = [
+                    { id: 'joystick-zone', display: 'block' },
+                    { id: 'messageInputContainer', display: '' },
+                    { id: 'coordinatesDisplay', display: '' }
+                ];
+                elements.forEach(item => {
+                    const el = document.getElementById(item.id);
+                    if (el) el.style.display = item.display;
+                });
+            },
+
+            hideGameUI() {
+                const elements = ['joystick-zone', 'messageInputContainer', 'coordinatesDisplay'];
+                elements.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.style.display = 'none';
+                });
+            },
+
+            onLoginSuccess() {
+                console.log('📱 登录成功，显示游戏UI元素');
+                this.showGameUI();
+                setTimeout(() => this.updateLayout(), 50);
+            },
+
+            updateLayout() {
+                if (this.layout) {
+                    this.layout.calculate();
+                }
+                if (this.joystick) {
+                    this.joystick.resize();
+                }
+            },
+
+            handleResize() {
+                this.detectDevice();
+                if (this.isMobile && !document.body.classList.contains('mobile-mode')) {
+                    this.enableMobileMode();
+                }
+                this.updateLayout();
+            },
+
+            bindMobileEvents() {
+                // 使用更可靠的事件绑定方式
+                const bindClick = (id, handler) => {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        el.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handler(e);
+                        });
+                        console.log(`✅ 按钮已绑定: ${id}`);
+                    } else {
+                        console.warn(`⚠️ 未找到元素: ${id}`);
+                    }
+                };
+
+                // 消息按钮
+                bindClick('mobile-message-btn', () => {
+                    const container = document.getElementById('messageInputContainer');
+                    const btn = document.getElementById('mobile-message-btn');
+
+                    if (container && btn) {
+                        const isActive = container.classList.contains('active');
+                        if (isActive) {
+                            container.classList.remove('active');
+                            btn.classList.remove('message-active');
+                            console.log('📝 消息框已关闭');
+                        } else {
+                            container.classList.add('active');
+                            btn.classList.add('message-active');
+                            setTimeout(() => {
+                                const input = document.getElementById('messageInput');
+                                if (input) input.focus();
+                            }, 100);
+                            console.log('📝 消息框已打开');
+                        }
+                    }
+                });
+
+                // 资料按钮
+                bindClick('mobile-profile-btn', () => {
+                    if (typeof openProfilePanel === 'function') {
+                        openProfilePanel();
+                        console.log('👤 打开资料面板');
+                    } else {
+                        console.error('❌ openProfilePanel 函数未定义');
+                    }
+                });
+
+                // 放大按钮
+                bindClick('mobile-zoom-in-btn', () => {
+                    if (typeof state !== 'undefined' && state.viewport) {
+                        state.viewport.scale = Math.min(3, state.viewport.scale * 1.2);
+                        state.viewport.x = state.user?.x || 0;
+                        state.viewport.y = state.user?.y || 0;
+                        console.log(`🔍+ 缩放: ${state.viewport.scale.toFixed(2)}`);
+                    }
+                });
+
+                // 缩小按钮
+                bindClick('mobile-zoom-out-btn', () => {
+                    if (typeof state !== 'undefined' && state.viewport) {
+                        state.viewport.scale = Math.max(0.6, state.viewport.scale * 0.8);
+                        state.viewport.x = state.user?.x || 0;
+                        state.viewport.y = state.user?.y || 0;
+                        console.log(`🔍- 缩放: ${state.viewport.scale.toFixed(2)}`);
+                    }
+                });
+
+                // Canvas触摸事件
+                this.bindCanvasTouch();
+
+                console.log('✅ 所有移动端按钮事件已绑定完成');
+            },
+
+            bindCanvasTouch() {
+                const canvas = document.getElementById('worldCanvas');
+                if (!canvas) {
+                    console.warn('⚠️ 未找到Canvas元素，跳过触摸事件绑定');
+                    return;
+                }
+
+                let lastTap = 0;
+
+                canvas.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    const now = Date.now();
+
+                    // 双击检测
+                    if (now - lastTap < 300) {
+                        state.viewport.scale = 1;
+                        state.viewport.x = state.user.x;
+                        state.viewport.y = state.user.y;
+                    }
+                    lastTap = now;
+
+                    // 单击处理
+                    if (e.touches.length === 1) {
+                        this.handleCanvasTap(e.touches[0]);
+                    }
+                }, { passive: false });
+
+                canvas.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    // 双指缩放
+                    if (e.touches.length === 2) {
+                        this.handlePinchZoom(e);
+                    }
+                }, { passive: false });
+            },
+
+            handleCanvasTap(touch) {
+                // 移动端：如果输入框已打开，先关闭它
+                const msgContainer = document.getElementById('messageInputContainer');
+                const msgBtn = document.getElementById('mobile-message-btn');
+                if (msgContainer && msgContainer.classList.contains('active')) {
+                    msgContainer.classList.remove('active');
+                    if (msgBtn) msgBtn.classList.remove('message-active');
+
+                    setTimeout(() => {
+                        this.updateLayout();
+                    }, 50);
+                    return;
+                }
+
+                const worldPos = this.screenToWorld(touch.clientX, touch.clientY);
+
+                // 检测点击用户（显示菜单）
+                for (const user of state.otherUsers) {
+                    const dist = Math.hypot(user.x - worldPos.x, user.y - worldPos.y);
+                    if (dist < 40 / state.viewport.scale) {
+                        showContextMenu(touch.clientX, touch.clientY, user);
+                        return;
+                    }
+                }
+
+                // 检测点击消息（显示详情）
+                const sorted = [...state.messages].sort((a, b) => {
+                    const distA = Math.hypot(a.x - state.user.x, a.y - state.user.y);
+                    const distB = Math.hypot(b.x - state.user.x, b.y - state.user.y);
+                    return distA - distB;
+                });
+
+                for (const msg of sorted) {
+                    if (msg.bubbleWidth && msg.bubbleHeight) {
+                        if (Math.abs(worldPos.x - msg.x) < msg.bubbleWidth/2 && Math.abs(worldPos.y - msg.y) < msg.bubbleHeight/2) {
+                            document.getElementById('detailAuthor').textContent = msg.author;
+                            document.getElementById('detailContent').textContent = msg.content;
+                            document.getElementById('detailTime').textContent = formatTime(msg.timestamp);
+                            document.getElementById('messageDetail').classList.add('active');
+                            return;
+                        }
+                    }
+                }
+
+                // 移动端点击屏幕不进行移动/传送（仅摇杆控制）
+            },
+
+            handlePinchZoom(e) {
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                const dist = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
+
+                if (this.lastPinchDist) {
+                    const scale = dist / this.lastPinchDist;
+                    state.viewport.scale = Math.max(0.6, Math.min(3, state.viewport.scale * scale));
+                    state.viewport.x = state.user.x;
+                    state.viewport.y = state.user.y;
+                }
+                this.lastPinchDist = dist;
+            },
+
+            screenToWorld(clientX, clientY) {
+                return {
+                    x: (clientX - state.viewport.width / 2) / state.viewport.scale + state.viewport.x,
+                    y: (clientY - state.viewport.height / 2) / state.viewport.scale + state.viewport.y
+                };
+            },
+
+            getJoystickInput() {
+                if (!this.joystick) return { x: 0, y: 0 };
+                const deadzone = 0.15;
+                let x = this.joystick.direction.x;
+                let y = this.joystick.direction.y;
+                if (Math.abs(x) < deadzone) x = 0;
+                if (Math.abs(y) < deadzone) y = 0;
+                return { x, y };
+            },
+
+            debounce(func, wait) {
+                let timeout;
+                return (...args) => {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => func.apply(this, args), wait);
+                };
+            }
+        };
+
+        // ==================== 智能响应式布局引擎 ====================
+
+        class ResponsiveLayout {
+            constructor() {
+                this.elements = {};
+                this.cacheElements();
+            }
+
+            cacheElements() {
+                // 直接使用原生API，不依赖$()函数
+                this.elements = {
+                    canvas: document.getElementById('worldCanvas'),
+                    userCard: document.getElementById('userCard'),
+                    onlineBadge: document.querySelector('.online-badge'),
+                    messageContainer: document.getElementById('messageInputContainer'),
+                    coordsDisplay: document.getElementById('coordinatesDisplay'),
+                    joystickZone: document.getElementById('joystick-zone'),
+                    mobileActions: document.getElementById('mobile-actions')
+                };
+
+                console.log('📦 元素缓存完成:', {
+                    canvas: !!this.elements.canvas,
+                    userCard: !!this.elements.userCard,
+                    onlineBadge: !!this.elements.onlineBadge,
+                    joystickZone: !!this.elements.joystickZone,
+                    mobileActions: !!this.elements.mobileActions
+                });
+            }
+
+            calculate() {
+                // 基于视口的真实响应式计算
+                const vw = window.innerWidth;    // 视口宽度 (例: 375)
+                const vh = window.innerHeight;   // 视口高度 (例: 667)
+                const vmin = Math.min(vw, vh);  // 较小边
+                const isCompact = vw <= 375;     // 超小屏
+                const isShort = vh <= 667;       // 短屏幕
+
+                // 登录界面可见时，只设置canvas，跳过其他UI元素
+                const entryScreen = document.getElementById('entryScreen');
+                const isOnLoginScreen = entryScreen && entryScreen.style.display !== 'none';
+
+                console.log(`📐 v3.0布局: ${vw}x${vh}, vmin:${vmin}${isOnLoginScreen ? ' [登录界面]' : ''}`);
+
+                // ========== 1. Canvas像素设置 ==========
+                if (this.elements.canvas) {
+                    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+                    this.elements.canvas.width = Math.floor(vw * dpr);
+                    this.elements.canvas.height = Math.floor(vh * dpr);
+
+                    if (state?.viewport) {
+                        state.viewport.width = vw;
+                        state.viewport.height = vh;
+                    }
+                }
+
+                // ========== 2-8. 游戏UI元素（登录界面时跳过）==========
+                if (!isOnLoginScreen) {
+                    // ========== 2. 在线人数 - 右上角 (基于vh) ==========
+                    if (this.elements.onlineBadge) {
+                        Object.assign(this.elements.onlineBadge.style, {
+                            position: 'fixed',
+                            top: `${Math.max(vh * 0.08, 50)}px`,
+                            right: `${vw * 0.03}px`,
+                            left: 'auto',
+                            fontSize: `${Math.max(12, vmin * 0.036)}px`,
+                            padding: `${vmin * 0.016}px ${vmin * 0.032}px`,
+                            zIndex: '10'
+                        });
+                    }
+
+                    // ========== 3. 用户卡片 - 左上角（与右上角对齐）==========
+                    if (this.elements.userCard) {
+                        Object.assign(this.elements.userCard.style, {
+                            position: 'fixed',
+                            top: `${Math.max(vh * 0.08, 50)}px`,
+                            left: `${vw * 0.027}px`,
+                            right: 'auto',
+                            bottom: 'auto',
+                            maxWidth: `${vw * 0.52}px`,
+                            fontSize: `${Math.max(12, vmin * 0.036)}px`,
+                            padding: `${vmin * 0.014}px ${vmin * 0.028}px`,
+                            zIndex: '10'
+                        });
+                    }
+
+                    // ========== 4. 坐标显示 - 底部居中 ==========
+                    if (this.elements.coordsDisplay) {
+                        Object.assign(this.elements.coordsDisplay.style, {
+                            position: 'fixed',
+                            top: 'auto',
+                            left: '50%',
+                            right: 'auto',
+                            bottom: `${vh * 0.26}px`,
+                            transform: 'translateX(-50%)',
+                            fontSize: `${Math.max(10, vmin * 0.028)}px`,
+                            opacity: '0.65',
+                            zIndex: '10'
+                        });
+                    }
+
+                    // ========== 5. 消息输入框 - 底部居中 (智能显隐) ==========
+                    if (this.elements.messageContainer) {
+                        const inputBottom = isShort ? vh * 0.24 : vh * 0.23;
+                        const maxWidth = Math.min(vw * 0.62, 280);
+                        const isActive = this.elements.messageContainer.classList.contains('active');
+
+                        Object.assign(this.elements.messageContainer.style, {
+                            position: 'fixed',
+                            top: 'auto',
+                            left: '50%',
+                            right: 'auto',
+                            bottom: `${inputBottom}px`,
+                            width: `${maxWidth}px`,
+                            maxWidth: `${maxWidth}px`,
+                            zIndex: '10',
+                            transform: isActive
+                                ? 'translateX(-50%) translateY(0)'
+                                : 'translateX(-50%) translateY(150%)'
+                        });
+                    }
+
+                    // ========== 6. 虚拟摇杆 - 左下角 (基于vmin) ==========
+                    if (this.elements.joystickZone) {
+                        const joystickSize = isCompact ? vmin * 0.25 : vmin * 0.27;
+
+                        Object.assign(this.elements.joystickZone.style, {
+                            position: 'fixed',
+                            top: 'auto',
+                            left: `${vw * 0.035}px`,
+                            right: 'auto',
+                            bottom: `${vh * 0.028}px`,
+                            width: `${joystickSize}px`,
+                            height: `${joystickSize}px`,
+                            zIndex: '9999'
+                        });
+                    }
+
+                    // ========== 8. 对话框居中（坐标传送等 - 仅移动端）==========
+                    const dialogOverlays = document.querySelectorAll('.dialog-overlay');
+                    dialogOverlays.forEach(overlay => {
+                        const dialog = overlay.querySelector('.dialog');
+                        if (dialog) {
+                            Object.assign(dialog.style, {
+                                position: 'fixed',
+                                top: '50%',
+                                left: '50%',
+                                transform: 'translate(-50%, -50%) scale(0.94)',
+                                width: isCompact ? `${vw * 0.82}px` : `${Math.min(vw * 0.78, 340)}px`,
+                                maxWidth: 'none',
+                                margin: '0'
+                            });
+                        }
+                    });
+                }
+
+                console.log(`✅ v3.0布局完成`);
+            }
+
+            setupCanvas(w, h) {
+                const canvas = this.elements.canvas;
+                if (!canvas) return;
+
+                // 设置Canvas像素尺寸
+                canvas.width = w;
+                canvas.height = h;
+
+                // 更新state
+                state.viewport.width = w;
+                state.viewport.height = h;
+            }
+
+            setStyle(el, styles) {
+                if (!el) return;
+                Object.assign(el.style, styles);
+            }
+        }
+
+        // ==================== 虚拟摇杆控制器 ====================
+
+        class JoystickController {
+            constructor() {
+                // 使用原生API
+                this.zone = document.getElementById('joystick-zone');
+                this.canvas = document.getElementById('joystick-canvas');
+
+                if (!this.zone || !this.canvas) {
+                    console.error('❌ 摇杆元素未找到:', { zone: !!this.zone, canvas: !!this.canvas });
+                    return;
+                }
+
+                this.ctx = this.canvas.getContext('2d');
+                console.log('✅ 摇杆初始化成功');
+
+                this.size = 100;
+                this.centerX = 50;
+                this.centerY = 50;
+                this.radius = 38;
+                this.stickRadius = 17;
+
+                this.stickX = 0;
+                this.stickY = 0;
+                this.active = false;
+                this.touchId = null;
+                this.direction = { x: 0, y: 0 };
+
+                this.bindEvents();
+                this.render();
+            }
+
+            resize() {
+                const rect = this.zone.getBoundingClientRect();
+                this.size = Math.min(rect.width, rect.height);
+                this.centerX = this.size / 2;
+                this.centerY = this.size / 2;
+                this.radius = this.size * 0.38;
+                this.stickRadius = this.size * 0.17;
+
+                // 更新canvas尺寸
+                this.canvas.width = this.size;
+                this.canvas.height = this.size;
+
+                this.render();
+            }
+
+            bindEvents() {
+                this.canvas.addEventListener('touchstart', (e) => this.onStart(e), { passive: false });
+                this.canvas.addEventListener('touchmove', (e) => this.onMove(e), { passive: false });
+                this.canvas.addEventListener('touchend', (e) => this.onEnd(e), { passive: false });
+                this.canvas.addEventListener('touchcancel', (e) => this.onEnd(e), { passive: false });
+
+                document.addEventListener('touchend', (e) => {
+                    if (this.active && !e.target.closest('#joystick-zone')) {
+                        this.reset();
+                    }
+                });
+            }
+
+            onStart(e) {
+                e.preventDefault();
+                if (!this.active) {
+                    this.active = true;
+                    this.touchId = e.changedTouches[0].identifier;
+                    this.updatePosition(e.changedTouches[0]);
+                }
+            }
+
+            onMove(e) {
+                e.preventDefault();
+                for (const touch of e.changedTouches) {
+                    if (touch.identifier === this.touchId) {
+                        this.updatePosition(touch);
+                        break;
+                    }
+                }
+            }
+
+            onEnd(e) {
+                e.preventDefault();
+                for (const touch of e.changedTouches) {
+                    if (touch.identifier === this.touchId) {
+                        this.reset();
+                        break;
+                    }
+                }
+            }
+
+            updatePosition(touch) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = touch.clientX - rect.left - this.centerX;
+                const y = touch.clientY - rect.top - this.centerY;
+
+                const dist = Math.min(Math.hypot(x, y), this.radius);
+                const angle = Math.atan2(y, x);
+
+                this.stickX = Math.cos(angle) * dist;
+                this.stickY = Math.sin(angle) * dist;
+                this.direction.x = this.stickX / this.radius;
+                this.direction.y = this.stickY / this.radius;
+
+                this.render();
+            }
+
+            reset() {
+                this.active = false;
+                this.touchId = null;
+                this.stickX = 0;
+                this.stickY = 0;
+                this.direction.x = 0;
+                this.direction.y = 0;
+                this.render();
+            }
+
+            render() {
+                const s = this.size;
+                this.ctx.clearRect(0, 0, s, s);
+
+                // 外圈
+                this.ctx.beginPath();
+                this.ctx.arc(this.centerX, this.centerY, this.radius, 0, Math.PI * 2);
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+                this.ctx.fill();
+                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+                this.ctx.lineWidth = Math.max(1.5, s * 0.018);
+                this.ctx.stroke();
+
+                // 十字线
+                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                this.ctx.lineWidth = 1;
+                const offset = this.radius - s * 0.04;
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.centerX, this.centerY - offset);
+                this.ctx.lineTo(this.centerX, this.centerY + offset);
+                this.ctx.moveTo(this.centerX - offset, this.centerY);
+                this.ctx.lineTo(this.centerX + offset, this.centerY);
+                this.ctx.stroke();
+
+                // 摇杆
+                this.ctx.beginPath();
+                if (this.active) {
+                    this.ctx.arc(this.centerX + this.stickX, this.centerY + this.stickY, this.stickRadius, 0, Math.PI * 2);
+                    this.ctx.fillStyle = 'rgba(0, 122, 255, 0.85)';
+                    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+                } else {
+                    this.ctx.arc(this.centerX, this.centerY, this.stickRadius, 0, Math.PI * 2);
+                    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+                    this.ctx.strokeStyle = 'transparent';
+                }
+                this.ctx.fill();
+                if (this.active) {
+                    this.ctx.lineWidth = 2;
+                    this.ctx.stroke();
+                }
+            }
+        }
+
+        // 初始化移动端适配
+        let mobileAdapter = null;
+
+        // ==================== 原有代码继续 ====================
+
+        const LiquidGlass = (function() {
+            const smoothStep = (a, b, t) => { t = Math.max(0, Math.min(1, (t - a) / (b - a))); return t * t * (3 - 2 * t); };
+            const len = (x, y) => Math.sqrt(x * x + y * y);
+            const sdfRect = (x, y, w, h, r) => {
+                const qx = Math.abs(x) - w + r, qy = Math.abs(y) - h + r;
+                return Math.min(Math.max(qx, qy), 0) + len(Math.max(qx,0), Math.max(qy,0)) - r;
+            };
+            
+            function buildMap(w, h, fragFn) {
+                const c = document.getElementById('lg-canvas');
+                c.width = w; c.height = h;
+                const ctx2 = c.getContext('2d');
+                const data = new Uint8ClampedArray(w * h * 4);
+                let maxS = 0, raw = [];
+                for (let i = 0; i < data.length; i += 4) {
+                    const px = (i/4)%w, py = Math.floor(i/4/w);
+                    const pos = fragFn(px/w, py/h);
+                    const dx = pos.x*w - px, dy = pos.y*h - py;
+                    maxS = Math.max(maxS, Math.abs(dx), Math.abs(dy));
+                    raw.push(dx, dy);
+                }
+                maxS *= 0.5;
+                let idx = 0;
+                for (let i = 0; i < data.length; i += 4) {
+                    data[i]   = (raw[idx++]/maxS + 0.5)*255;
+                    data[i+1] = (raw[idx++]/maxS + 0.5)*255;
+                    data[i+2] = 128; data[i+3] = 255;
+                }
+                ctx2.putImageData(new ImageData(data, w, h), 0, 0);
+                return c.toDataURL();
+            }
+            
+            function init() {
+                const m1 = buildMap(200, 150, (u, v) => {
+                    const ix=u-0.5, iy=v-0.5;
+                    const d = sdfRect(ix, iy, 0.35, 0.22, 0.7);
+                    const disp = smoothStep(0.8, 0, d - 0.12);
+                    const s = smoothStep(0, 1, disp);
+                    return { x: ix*s + 0.5, y: iy*s + 0.5 };
+                });
+                document.getElementById('lg-map').setAttributeNS('http://www.w3.org/1999/xlink', 'href', m1);
+                
+                const m2 = buildMap(220, 130, (u, v) => {
+                    const ix=u-0.5, iy=v-0.5;
+                    const d = sdfRect(ix, iy, 0.42, 0.25, 0.8);
+                    const disp = smoothStep(0.8, 0, d - 0.12);
+                    const s = smoothStep(0, 1, disp);
+                    return { x: ix*s + 0.5, y: iy*s + 0.5 };
+                });
+                document.getElementById('lg-lg-map').setAttributeNS('http://www.w3.org/1999/xlink', 'href', m2);
+            }
+            
+            return { init };
+        })();
+        
+        const socket = io();
+        const canvas = document.getElementById('worldCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const state = {
+            user: { id: null, name: '匿名', x: 0, y: 0, color: '#00d4ff', avatar: null },
+            otherUsers: [],
+            messages: [],
+            viewport: { x: 0, y: 0, scale: 1, width: window.innerWidth, height: window.innerHeight },
+            keys: {},
+            movementDisabled: false,
+            isAdmin: false,
+            isSuperAdmin: false,
+            mutedUsers: new Set()
+        };
+
+        function isTypingInInput() {
+            const tag = document.activeElement?.tagName;
+            return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+        }
+
+        const userAvatars = new Map();
+        const msgMeasureCache = new Map();
+        let MAX_RENDER_MESSAGES = 100;
+        const MAX_MESSAGES = 5000;
+        
+        const COLORS = ['#007aff', '#34c759', '#ff9500', '#af52de', '#ff2d55', '#00c7be', '#ff6482', '#64d2ff', '#30d158', '#ff453a', '#bf5af2', '#ffd60a'];
+        let selectedColor = state.user.color;
+        let contextMenuTarget = null;
+        let myFriends = [];
+        
+        function switchAuthTab(tabName) {
+            document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+            const indicator = document.querySelector('.auth-tab-indicator');
+            indicator.classList.toggle('right', tabName === 'register');
+            $('loginPanel').style.display = tabName === 'login' ? '' : 'none';
+            $('registerPanel').style.display = tabName === 'register' ? '' : 'none';
+            $('guestPanel').style.display = 'none';
+        }
+        
+        function switchToGuest() {
+            document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+            document.querySelector('.auth-tab-indicator').classList.add('right');
+            $('loginPanel').style.display = 'none';
+            $('registerPanel').style.display = 'none';
+            $('guestPanel').style.display = '';
+        }
+        
+        function setButtonLoading(btn, loading) {
+            btn.classList.toggle('loading', loading);
+            btn.disabled = loading;
+            btn.querySelector('.btn-text').textContent = loading ? '处理中...' : btn.dataset.originalText || '确定';
+        }
+        
+        async function handleLogin() {
+            const btn = $('loginButton');
+            const username = $('loginUsername').value.trim();
+            const password = $('loginPassword').value;
+            if (!username || !password) { alert('请输入用户名和密码'); return; }
+            setButtonLoading(btn, true);
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    Object.assign(state.user, data.user);
+                    state.user.id = data.user.id;
+                    state.user.name = data.user.nickname || data.user.username;
+                    state.user.color = data.user.color || state.user.color;
+                    selectedColor = state.user.color;
+                    localStorage.setItem('mechat_user_id', data.user.id);
+                    localStorage.setItem('mechat_user_color', state.user.color);
+                    doSocketRegister(state.user.avatar);
+                } else {
+                    alert(data.error || '登录失败');
+                    setButtonLoading(btn, false);
+                }
+            } catch (e) { alert('网络错误，请重试'); setButtonLoading(btn, false); }
+        }
+        
+        async function handleRegister() {
+            const btn = $('registerButton');
+            const username = $('regUsername').value.trim();
+            const password = $('regPassword').value;
+            const nickname = $('nicknameInput').value.trim() || username;
+            if (!username || username.length < 2) { alert('用户名至少需要2个字符'); return; }
+            if (!password || password.length < 4) { alert('密码至少需要4个字符'); return; }
+            setButtonLoading(btn, true);
+            try {
+                const res = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, nickname, color: selectedColor })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    Object.assign(state.user, data.user);
+                    state.user.id = data.user.id;
+                    state.user.name = data.user.nickname || data.user.username;
+                    state.user.color = data.user.color || selectedColor;
+                    selectedColor = state.user.color;
+                    localStorage.setItem('mechat_user_id', data.user.id);
+                    localStorage.setItem('mechat_user_color', state.user.color);
+                    doSocketRegister(state.user.avatar);
+                } else {
+                    alert(data.error || '注册失败');
+                    setButtonLoading(btn, false);
+                }
+            } catch (e) { alert('网络错误，请重试'); setButtonLoading(btn, false); }
+        }
+        
+        function handleGuestEnter() {
+            const btn = $('guestEnterButton');
+            const nickname = $('guestNickname').value.trim() || getRandomName();
+            state.user.name = nickname;
+            setButtonLoading(btn, true);
+            doSocketRegister(state.user.avatar);
+        }
+        
+        function getRandomName() {
+            const names = ['旅行者', '探险家', '漫步者', '流浪者', '追光者', '星尘旅人', '风语者'];
+            return names[Math.floor(Math.random() * names.length)];
+        }
+        
+        function doSocketRegister(avatar) {
+            const savedUserId = localStorage.getItem('mechat_user_id');
+            const savedToken = localStorage.getItem('mechat_session_token');
+            const savedColor = localStorage.getItem('mechat_user_color');
+            const registerData = {
+                nickname: state.user.name,
+                avatar: avatar,
+                userId: savedUserId,
+                sessionToken: savedToken,
+                color: savedColor || selectedColor
+            };
+            if (avatar) {
+                compressAvatar(avatar, 128).then(compressed => {
+                    state.user.avatar = compressed;
+                    socket.emit('register', { ...registerData, avatar: compressed });
+                });
+            } else {
+                socket.emit('register', registerData);
+            }
+        }
+        
+        let profileViewTarget = null;
+
+        function openProfilePanel(targetUser) {
+            profileViewTarget = targetUser || null;
+            const panel = $('profilePanel');
+            const isSelf = !targetUser || targetUser.id === state.user.id;
+            panel.querySelector('h3').textContent = isSelf ? '个人资料' : '用户资料';
+            panel.style.display = '';
+            requestAnimationFrame(() => panel.classList.add('open'));
+
+            if (isSelf) {
+                $('profileUsername').textContent = state.user.username || state.user.name;
+                $('profileId').textContent = 'ID: ' + (state.user.id || '');
+                $('profileNickname').value = state.user.name || '';
+                $('profileBio').value = state.user.bio || '';
+                $('profileNickname').disabled = false;
+                $('profileBio').disabled = false;
+                $('saveProfileBtn').style.display = '';
+                document.querySelector('.color-picker-row').style.display = '';
+                document.querySelector('.profile-avatar-upload').style.cursor = 'pointer';
+                document.getElementById('profileAvatarInput').disabled = false;
+                initColorPicker();
+                updateProfileAvatarDisplay();
+                socket.emit('get_friends');
+                socket.emit('get_pending_requests');
+                $('adminPanelBtn').style.display = state.isAdmin ? '' : 'none';
+                $('adminPanelBtn').textContent = state.isSuperAdmin ? '👑 站长面板' : '🛡️ 管理面板';
+                if (state.isSuperAdmin) { $('adminPanelBtn').style.background = 'linear-gradient(135deg,#eab308,#ca8a04)'; } else { $('adminPanelBtn').style.background = ''; }
+                document.querySelectorAll('.profile-section').forEach(s => s.style.display = '');
+            } else {
+                $('profileUsername').textContent = targetUser.username || targetUser.name || '@' + (targetUser.id || '');
+                $('profileId').textContent = 'ID: ' + (targetUser.id || '');
+                $('profileNickname').value = targetUser.name || targetUser.nickname || '';
+                $('profileBio').value = targetUser.bio || '';
+                $('profileNickname').disabled = true;
+                $('profileBio').disabled = true;
+                $('saveProfileBtn').style.display = 'none';
+                document.querySelector('.color-picker-row').style.display = 'none';
+                document.querySelector('.profile-avatar-upload').style.cursor = 'default';
+                document.getElementById('profileAvatarInput').disabled = true;
+                const img = $('profileAvatarImg');
+                const icon = $('profileCameraIcon');
+                if (targetUser.avatar) {
+                    img.src = targetUser.avatar; img.style.display = ''; icon.style.display = 'none';
+                } else {
+                    img.style.display = 'none'; icon.style.display = '';
+                    icon.style.color = targetUser.color || '#888';
+                }
+                $('adminPanelBtn').style.display = 'none';
+                document.querySelectorAll('.profile-section').forEach(s => s.style.display = 'none');
+            }
+        }
+        
+        function closeProfilePanel() {
+            const panel = $('profilePanel');
+            panel.classList.remove('open');
+            setTimeout(() => { panel.style.display = 'none'; }, 350);
+        }
+        
+        function initColorPicker() {
+            const picker = $('colorPicker');
+            picker.innerHTML = '';
+            COLORS.forEach(c => {
+                const dot = document.createElement('div');
+                dot.className = 'color-dot' + (c === selectedColor ? ' selected' : '');
+                dot.style.background = c;
+                dot.dataset.color = c;
+                dot.addEventListener('click', () => {
+                    picker.querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
+                    dot.classList.add('selected');
+                    selectedColor = c;
+                });
+                picker.appendChild(dot);
+            });
+        }
+        
+        function updateProfileAvatarDisplay() {
+            const img = $('profileAvatarImg');
+            const icon = $('profileCameraIcon');
+            if (state.user.avatar) {
+                img.src = state.user.avatar;
+                img.style.display = '';
+                icon.style.display = 'none';
+            } else {
+                img.style.display = 'none';
+                icon.style.display = '';
+            }
+        }
+        
+        function saveProfile() {
+            const btn = $('saveProfileBtn');
+            setButtonLoading(btn, true);
+            const profileData = {
+                nickname: $('profileNickname').value.trim() || state.user.name,
+                bio: $('profileBio').value.trim(),
+                color: selectedColor
+            };
+            if (state.user.avatar) {
+                compressAvatar(state.user.avatar, 128).then(compressed => {
+                    profileData.avatar = compressed;
+                    socket.emit('update_profile', profileData);
+                });
+            } else {
+                socket.emit('update_profile', profileData);
+            }
+        }
+        
+        function renderFriendsList(friends) {
+            myFriends = friends || [];
+            const container = $('friendsList');
+            if (!myFriends.length) {
+                container.innerHTML = '<p class="empty-hint">暂无好友</p>';
+                return;
+            }
+            container.innerHTML = '';
+            myFriends.forEach(f => {
+                const item = document.createElement('div');
+                item.className = 'friend-item';
+                const safeColor = (f.color || '#007aff').replace('#', '');
+                const cr = parseInt(safeColor.substr(0, 2), 16) || 0;
+                const cg = parseInt(safeColor.substr(2, 2), 16) || 0;
+                const cb = parseInt(safeColor.substr(4, 2), 16) || 0;
+                const onlineUser = state.otherUsers.find(u => u.id === f.id);
+                const isOnline = !!onlineUser;
+                
+                if (f.avatar) {
+                    item.innerHTML = `
+                        <div style="position:relative;flex-shrink:0">
+                            <img class="friend-avatar" src="${f.avatar}" alt="" style="cursor:pointer">
+                            ${isOnline ? '<span style="position:absolute;bottom:2px;right:2px;width:10px;height:10px;background:#34c759;border-radius:50%;border:2px solid white;"></span>' : ''}
+                        </div>
+                        <div class="friend-info" style="flex:1;min-width:0;cursor:pointer">
+                            <div class="friend-name">${escapeHtml(f.nickname)}</div>
+                            ${isOnline ? `<div style="font-size:0.7rem;color:var(--text-tertiary)">在线 · X:${Math.round(onlineUser.x)} Y:${Math.round(-onlineUser.y)}</div>` : '<div style="font-size:0.7rem;color:var(--text-tertiary)">离线</div>'}
+                        </div>
+                        <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
+                        ${isOnline ? `<button class="request-btn accept" data-teleport-id="${f.id}" title="传送"><i class="fas fa-location-arrow"></i></button><button class="request-btn reject" data-dm-id="${f.id}" data-dm-name="${escapeHtml(f.nickname)}" title="私信"><i class="fas fa-comment"></i></button>` : ''}
+                        <button class="friend-remove-btn" data-friend-id="${f.id}"><i class="fas fa-times"></i></button></div>
+                    `;
+                } else {
+                    item.innerHTML = `
+                        <div style="position:relative;flex-shrink:0">
+                            <div class="friend-avatar-placeholder" style="background:rgb(${cr},${cg},${cb});cursor:pointer">${(f.nickname || '?').charAt(0)}</div>
+                            ${isOnline ? '<span style="position:absolute;bottom:2px;right:2px;width:10px;height:10px;background:#34c759;border-radius:50%;border:2px solid white;"></span>' : ''}
+                        </div>
+                        <div class="friend-info" style="flex:1;min-width:0;cursor:pointer">
+                            <div class="friend-name">${escapeHtml(f.nickname)}</div>
+                            ${isOnline ? `<div style="font-size:0.7rem;color:var(--text-tertiary)">在线 · X:${Math.round(onlineUser.x)} Y:${Math.round(-onlineUser.y)}</div>` : '<div style="font-size:0.7rem;color:var(--text-tertiary)">离线</div>'}
+                        </div>
+                        <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
+                        ${isOnline ? `<button class="request-btn accept" data-teleport-id="${f.id}" title="传送"><i class="fas fa-location-arrow"></i></button><button class="request-btn reject" data-dm-id="${f.id}" data-dm-name="${escapeHtml(f.nickname)}" title="私信"><i class="fas fa-comment"></i></button>` : ''}
+                        <button class="friend-remove-btn" data-friend-id="${f.id}"><i class="fas fa-times"></i></button></div>
+                    `;
+                }
+                const removeBtn = item.querySelector('.friend-remove-btn');
+                removeBtn.addEventListener('click', (e) => { e.stopPropagation(); if (confirm(`确定移除好友 ${f.nickname} 吗？`)) socket.emit('remove_friend', { targetId: f.id }); });
+                const teleportBtn = item.querySelector('[data-teleport-id]');
+                if (teleportBtn) teleportBtn.addEventListener('click', (e) => { e.stopPropagation(); state.user.x = onlineUser.x; state.user.y = onlineUser.y; state.viewport.x = onlineUser.x; state.viewport.y = onlineUser.y; socket.emit('move', { x: onlineUser.x, y: onlineUser.y }); });
+                const dmBtn = item.querySelector('[data-dm-id]');
+                if (dmBtn) dmBtn.addEventListener('click', (e) => { e.stopPropagation(); openDMPanel(f.id, f.nickname); });
+                container.appendChild(item);
+            });
+        }
+        
+        let pendingRequests = [];
+        
+        function renderPendingRequests(requests) {
+            pendingRequests = requests || [];
+            const container = $('pendingRequestsList');
+            const badge = $('requestBadge');
+            if (!pendingRequests.length) {
+                container.innerHTML = '<p class="empty-hint">暂无申请</p>';
+                badge.style.display = 'none';
+                return;
+            }
+            badge.textContent = pendingRequests.length;
+            badge.style.display = '';
+            container.innerHTML = '';
+            pendingRequests.forEach(r => {
+                const item = document.createElement('div');
+                item.className = 'request-item';
+                const safeColor = (r.color || '#007aff').replace('#', '');
+                const cr = parseInt(safeColor.substr(0, 2), 16) || 0;
+                const cg = parseInt(safeColor.substr(2, 2), 16) || 0;
+                const cb = parseInt(safeColor.substr(4, 2), 16) || 0;
+                if (r.avatar) {
+                    item.innerHTML = `
+                        <img class="friend-avatar" src="${r.avatar}" alt="">
+                        <div class="friend-info">
+                            <div class="friend-name">${escapeHtml(r.nickname)}</div>
+                        </div>
+                        <div class="request-actions">
+                            <button class="request-btn accept" data-from-id="${r.id}">接受</button>
+                            <button class="request-btn reject" data-from-id="${r.id}">拒绝</button>
+                        </div>
+                    `;
+                } else {
+                    item.innerHTML = `
+                        <div class="friend-avatar-placeholder" style="background:rgb(${cr},${cg},${cb})">${(r.nickname || '?').charAt(0)}</div>
+                        <div class="friend-info">
+                            <div class="friend-name">${escapeHtml(r.nickname)}</div>
+                        </div>
+                        <div class="request-actions">
+                            <button class="request-btn accept" data-from-id="${r.id}">接受</button>
+                            <button class="request-btn reject" data-from-id="${r.id}">拒绝</button>
+                        </div>
+                    `;
+                }
+                item.querySelector('.accept').addEventListener('click', () => {
+                    socket.emit('accept_friend_request', { fromId: r.id });
+                });
+                item.querySelector('.reject').addEventListener('click', () => {
+                    socket.emit('reject_friend_request', { fromId: r.id });
+                });
+                container.appendChild(item);
+            });
+        }
+        
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+        
+        function escapeAttr(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+        
+        function showContextMenu(x, y, targetUser) {
+            contextMenuTarget = targetUser;
+            const menu = $('userContextMenu');
+            const isFriend = myFriends.some(f => f.id === targetUser.id);
+            menu.querySelector('[data-action="send_friend_request"]').style.display = isFriend ? 'none' : '';
+            menu.querySelector('[data-action="send_private_message"]').style.display = isFriend ? '' : 'none';
+            menu.querySelector('[data-action="remove_friend"]').style.display = isFriend ? '' : 'none';
+            const adminOnlyEls = menu.querySelectorAll('.admin-only');
+            adminOnlyEls.forEach(el => { el.style.display = (state.isAdmin && targetUser.id !== state.user.id) ? '' : 'none'; });
+            if (state.isAdmin && targetUser.id !== state.user.id) {
+                const isMuted = state.mutedUsers.has(targetUser.id);
+                menu.querySelector('[data-action="admin_mute"]').style.display = isMuted ? 'none' : '';
+                menu.querySelector('[data-action="admin_unmute"]').style.display = isMuted ? '' : 'none';
+            }
+            menu.style.left = Math.min(x, window.innerWidth - 170) + 'px';
+            menu.style.top = Math.min(y, window.innerHeight - 200) + 'px';
+            menu.style.display = '';
+        }
+        
+        function hideContextMenu() {
+            $('userContextMenu').style.display = 'none';
+            contextMenuTarget = null;
+        }
+        
+        function handleContextAction(action) {
+            if (!contextMenuTarget) return;
+            const target = contextMenuTarget;
+            hideContextMenu();
+            switch (action) {
+                case 'view_profile':
+                    openProfilePanel(target);
+                    break;
+                case 'add_friend':
+                case 'send_friend_request':
+                    socket.emit('send_friend_request', { targetId: target.id });
+                    break;
+                case 'remove_friend':
+                    if (confirm(`确定移除好友 ${target.name} 吗？`)) {
+                        socket.emit('remove_friend', { targetId: target.id });
+                    }
+                    break;
+                case 'block_user':
+                    if (confirm(`确定屏蔽 ${target.name} 吗？屏蔽后将看不到对方的消息和位置。`)) {
+                        socket.emit('block_user', { targetId: target.id });
+                    }
+                    break;
+                case 'unblock_user':
+                    socket.emit('unblock_user', { targetId: target.id });
+                    break;
+                case 'send_private_message':
+                    openDMPanel(target.id, target.name);
+                    break;
+                case 'admin_mute':
+                    const muteReason = prompt(`禁言 ${target.name}，输入原因（可选）：`);
+                    socket.emit('admin_mute_user', { targetId: target.id, reason: muteReason || '' });
+                    break;
+                case 'admin_unmute':
+                    socket.emit('admin_unmute_user', { targetId: target.id });
+                    break;
+                case 'admin_kick':
+                    const kickReason = prompt(`踢出 ${target.name}，输入原因（可选）：`);
+                    socket.emit('admin_kick_user', { targetId: target.id, reason: kickReason || '' });
+                    break;
+                case 'admin_ban':
+                    if (confirm(`确定封禁 ${target.name} 吗？封禁后该账号将无法登录。`)) {
+                        const banReason = prompt('输入封禁原因（可选）：');
+                        socket.emit('admin_ban_user', { targetId: target.id, reason: banReason || '' });
+                    }
+                    break;
+                case 'admin_info':
+                    openAdminPanel();
+                    switchAdminTab('users');
+                    socket.emit('admin_get_user_info', { targetId: target.id });
+                    break;
+            }
+        }
+        
+        let dmTargetId = null;
+        
+        function openDMPanel(targetId, targetName) {
+            dmTargetId = targetId;
+            $('dmTargetName').textContent = '私信 · ' + targetName;
+            const panel = $('dmPanel');
+            panel.style.display = '';
+            $('dmMessages').innerHTML = '';
+            socket.emit('get_dm_history', { targetId });
+            $('dmInput').focus();
+        }
+
+        function closeDMPanel() {
+            $('dmPanel').style.display = 'none';
+            dmTargetId = null;
+        }
+
+        let pendingDeleteMessageId = null;
+        function showDeleteKeyDialog(messageId) {
+            pendingDeleteMessageId = messageId;
+            $('deleteKeyInput').value = '';
+            $('keyError').style.display = 'none';
+            $('deleteKeyDialog').style.display = '';
+            $('deleteKeyInput').focus();
+        }
+        function hideDeleteKeyDialog() { $('deleteKeyDialog').style.display = 'none'; pendingDeleteMessageId = null; }
+        function confirmDeleteMessage() {
+            const key = $('deleteKeyInput').value.trim();
+            if (!key) { $('keyError').style.display = ''; return; }
+            socket.emit('admin_delete_message', { messageId: pendingDeleteMessageId, key });
+            hideDeleteKeyDialog();
+        }
+
+        function openAdminPanel() {
+            const panel = $('adminPanel');
+            panel.style.display = '';  // 显示面板
+            panel.classList.add('open');
+            panel.querySelector('.header span').textContent = state.isSuperAdmin ? '👑 站长面板' : '🛡️ 管理面板';
+            socket.emit('admin_get_lists');
+            if (state.isSuperAdmin) socket.emit('admin_get_all_users');
+        }
+        function closeAdminPanel() {
+            const panel = $('adminPanel');
+            panel.classList.remove('open');
+            setTimeout(() => { panel.style.display = 'none'; }, 300); // 动画结束后隐藏
+        }
+        function switchAdminTab(tabName) {
+            document.querySelectorAll('.admin-tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+            $('tab-' + tabName).classList.add('active');
+            document.querySelector(`.admin-tab[data-tab="${tabName}"]`).classList.add('active');
+            if (tabName === 'lists') socket.emit('admin_get_lists');
+            if (tabName === 'users') socket.emit('admin_get_all_users');
+        }
+        function renderBannedList(list) {
+            const el = $('bannedList');
+            if (!list.length) { el.innerHTML = '<p style="color:var(--text-tertiary);font-size:0.8rem">暂无封禁用户</p>'; return; }
+            el.innerHTML = list.map(u => `<div class="admin-list-item"><span><span class="name">${escapeHtml(u.nickname || u.user_id)}</span><span class="reason">${u.reason ? '- ' + escapeHtml(u.reason) : ''}</span></span><button class="action-btn" onclick="socket.emit('admin_unban_user',{targetId:'${escapeAttr(u.user_id)}'});this.parentElement.remove()">解封</button></div>`).join('');
+        }
+        function renderMutedList(list) {
+            const el = $('mutedList');
+            if (!list.length) { el.innerHTML = '<p style="color:var(--text-tertiary);font-size:0.8rem">暂无禁言用户</p>'; return; }
+            el.innerHTML = list.map(u => `<div class="admin-list-item"><span><span class="name">${escapeHtml(u.nickname || u.user_id)}</span><span class="reason">${u.reason ? '- ' + escapeHtml(u.reason) : ''}</span></span><button class="action-btn" onclick="socket.emit('admin_unmute_user',{targetId:'${escapeAttr(u.user_id)}'});this.parentElement.remove()">解禁</button></div>`).join('');
+        }
+        function renderAllUsers(users) {
+            const el = $('adminUserList');
+            const q = ($('adminUserSearch').value || '').toLowerCase();
+            const filtered = users.filter(u => (u.nickname || '').toLowerCase().includes(q) || (u.username || '').toLowerCase().includes(q));
+            let tagHtml = '';
+            if (state.isSuperAdmin) {
+                tagHtml = filtered.map(u => {
+                    let tags = '';
+                    if (u.is_super_admin) tags += '<span class="super-admin-tag">👑站长</span>';
+                    else if (u.is_admin) tags += '<span class="admin-tag">🛡️管理员</span>';
+                    let btn = '';
+                    if (!u.is_super_admin && u.id !== state.user.id) {
+                        btn = u.is_admin
+                            ? `<button class="admin-toggle-btn unset" onclick="event.stopPropagation();socket.emit('admin_unset_admin',{targetId:'${escapeAttr(u.id)}'})">取消管理员</button>`
+                            : `<button class="admin-toggle-btn set" onclick="event.stopPropagation();socket.emit('admin_set_admin',{targetId:'${escapeAttr(u.id)}'})">设为管理员</button>`;
+                    }
+                    return `<div class="admin-user-item" onclick="socket.emit('admin_get_user_info',{targetId:'${escapeAttr(u.id)}'})"><div><div class="admin-user-item-name">${escapeHtml(u.nickname)}${tags}</div><div class="admin-user-item-id">@${escapeHtml(u.username)}</div></div>${btn}</div>`;
+                }).join('');
+            } else {
+                tagHtml = filtered.map(u => {
+                    let tags = '';
+                    if (u.is_super_admin) tags += '<span class="super-admin-tag">👑站长</span>';
+                    else if (u.is_admin) tags += '<span class="admin-tag">🛡️管理员</span>';
+                    return `<div class="admin-user-item" onclick="socket.emit('admin_get_user_info',{targetId:'${escapeAttr(u.id)}'})"><div><div class="admin-user-item-name">${escapeHtml(u.nickname)}${tags}</div><div class="admin-user-item-id">@${escapeHtml(u.username)}</div></div></div>`;
+                }).join('');
+            }
+            el.innerHTML = tagHtml;
+        }
+        function renderUserInfo(info) {
+            const el = $('adminUserInfo');
+            el.style.display = '';
+            let roleTag = '';
+            if (info.is_super_admin) roleTag = '<span class="super-admin-tag">👑站长</span>';
+            else if (info.is_admin) roleTag = '<span class="admin-tag">🛡️管理员</span>';
+            let adminBtn = '';
+            if (state.isSuperAdmin && !info.is_super_admin && info.id !== state.user.id) {
+                adminBtn = info.is_admin
+                    ? `<button class="admin-toggle-btn unset" style="margin-top:8px" onclick="socket.emit('admin_unset_admin',{targetId:'${escapeAttr(info.id)}'})">取消管理员身份</button>`
+                    : `<button class="admin-toggle-btn set" style="margin-top:8px" onclick="socket.emit('admin_set_admin',{targetId:'${escapeAttr(info.id)}'})">设为管理员</button>`;
+            }
+            el.innerHTML = `<h4>${escapeHtml(info.nickname)} ${roleTag}</h4>
+                <p>用户名: ${escapeHtml(info.username)}</p>
+                <p>ID: ${info.id}</p>
+                <p>颜色: <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${info.color};vertical-align:middle"></span> ${info.color}</p>
+                <p>签名: ${escapeHtml(info.bio || '无')}</p>
+                <p>注册时间: ${new Date(info.created_at).toLocaleString()}</p>
+                <p>最后活跃: ${info.last_active ? new Date(info.last_active).toLocaleString() : '未知'}</p>
+                <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+                    <input id="editNick" placeholder="新昵称" value="${escapeHtml(info.nickname)}" style="padding:4px 8px;border:1px solid rgba(0,0,0,0.1);border-radius:5px;font-size:0.78rem;width:100px">
+                    <input id="editBio" placeholder="新签名" value="${escapeHtml(info.bio || '')}" style="padding:4px 8px;border:1px solid rgba(0,0,0,0.1);border-radius:5px;font-size:0.78rem;width:140px">
+                    <button class="admin-btn small" onclick="const n=$('editNick').value,b=$('editBio').value;socket.emit('admin_update_user',{targetId:'${escapeAttr(info.id)}',field:'nickname',value:n});setTimeout(()=>socket.emit('admin_update_user',{targetId:'${escapeAttr(info.id)}',field:'bio',value:b}),200)">保存修改</button>
+                </div>
+                ${adminBtn}`;
+        }
+        function showBroadcast(msg) {
+            const toast = document.createElement('div');
+            toast.className = 'broadcast-toast';
+            toast.textContent = '📢 [' + msg.fromAdmin + '] ' + msg.content;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 6000);
+        }
+
+        function addDmMessage(msg, isFrom) {
+            const container = $('dmMessages');
+            const bubble = document.createElement('div');
+            bubble.className = 'dm-msg-bubble ' + (isFrom ? 'dm-msg-from' : 'dm-msg-to');
+            bubble.innerHTML = `<div>${escapeHtml(msg.content)}</div><div class="dm-msg-time">${formatTime(msg.timestamp)}</div>`;
+            container.appendChild(bubble);
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        function sendDM() {
+            const input = $('dmInput');
+            const content = input.value.trim();
+            if (!content || !dmTargetId) return;
+            socket.emit('send_private_message', { targetId: dmTargetId, content });
+            addDmMessage({ content, timestamp: Date.now() }, false);
+            input.value = '';
+        }
+        
+        function compressAvatar(base64, maxSize) {
+            if (!base64) return null;
+            return new Promise(resolve => {
+                const img = new Image();
+                img.onload = () => {
+                    const size = Math.min(maxSize, img.width, img.height);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = size;
+                    canvas.height = size;
+                    const c = canvas.getContext('2d');
+                    c.drawImage(img, 0, 0, size, size);
+                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                };
+                img.onerror = () => resolve(base64);
+                img.src = base64;
+            });
+        }
+        
+        function preMeasureMessage(msg) {
+            if (msgMeasureCache.has(msg.id) && msgMeasureCache.get(msg.id).content === msg.content) return;
+            const mCtx = ctx || { measureText: t => ({ width: t.length * 15 }) };
+            mCtx.font = '14px -apple-system, "Noto Sans SC", sans-serif';
+            
+            const content = msg.content || '';
+            const maxWidth = 260;
+            const lines = [];
+            let currentLine = '';
+            for (let j = 0; j < content.length; j++) {
+                const char = content[j];
+                const testLine = currentLine + char;
+                if (mCtx.measureText(testLine).width > maxWidth) {
+                    if (currentLine) { lines.push(currentLine); }
+                    currentLine = char;
+                } else { currentLine = testLine; }
+            }
+            if (currentLine) lines.push(currentLine);
+            
+            let maxLineWidth = 0;
+            for (const line of lines) maxLineWidth = Math.max(maxLineWidth, mCtx.measureText(line).width);
+            
+            const isLong = content.length > 50 || lines.length > 2;
+            const padX = 16;
+            const padY = 10;
+            const lineHeight = 20;
+            const actualLines = isLong ? Math.min(lines.length, 2) : lines.length;
+            msgMeasureCache.set(msg.id, { 
+                lines, 
+                bubbleW: Math.max(maxLineWidth + padX * 2, 80), 
+                bubbleH: actualLines * lineHeight + padY * 2,
+                isLong, padX, padY, lineHeight, content 
+            });
+        }
+        
+        const $ = id => document.getElementById(id);
+        const $$ = selector => document.querySelectorAll(selector);
+        const entryScreen = $('entryScreen');
+        const messageInputContainer = $('messageInputContainer');
+        const messageInput = $('messageInput');
+        const onlineCount = $('onlineCount');
+        const xCoord = $('xCoord');
+        const yCoord = $('yCoord');
+        const teleportDialog = $('teleportDialog');
+        const messageDetail = $('messageDetail');
+        
+        socket.on('connect', () => {
+            console.log('已连接服务器');
+            document.querySelectorAll('.enter-btn').forEach(btn => { btn.disabled = false; });
+        });
+        
+        socket.on('disconnect', () => {
+            console.log('断开连接');
+        });
+        
+        socket.on('connect_error', () => {
+            console.log('无法连接到服务器');
+        });
+        
+        socket.on('reconnect', () => {
+            console.log('重新连接服务器');
+            if (state.user.id) {
+                doSocketRegister(state.user.avatar);
+            }
+        });
+        
+        socket.on('registered', data => {
+            document.querySelectorAll('.enter-btn').forEach(btn => setButtonLoading(btn, false));
+            if (data.success) {
+                Object.assign(state.user, data.user);
+                state.user.id = data.user.id;
+                state.user.name = data.user.nickname;
+                state.user.username = data.user.username || '';
+                state.user.bio = data.user.bio || '';
+                selectedColor = data.user.color || selectedColor;
+                state.viewport.x = state.user.x;
+                state.viewport.y = state.user.y;
+                state.otherUsers = data.onlineUsers.filter(u => u.id !== state.user.id).map(u => ({
+                    ...u,
+                    name: u.nickname
+                }));
+                state.messages = data.recentMessages || [];
+                state.isAdmin = !!data.isAdmin;
+                state.isSuperAdmin = !!data.isSuperAdmin;
+                state.messages.forEach(msg => preMeasureMessage(msg));
+                localStorage.setItem('mechat_user_id', data.user.id);
+                localStorage.setItem('mechat_user_color', data.user.color);
+                if (data.sessionToken) localStorage.setItem('mechat_session_token', data.sessionToken);
+                entryScreen.style.display = 'none';
+                document.querySelector('.online-badge').style.display = '';
+                $('coordinatesDisplay').style.display = '';
+                document.querySelector('.controls-hint').style.display = '';
+
+                // 移动端：登录成功后显示游戏UI元素
+                if (typeof mobileAdapter !== 'undefined' && mobileAdapter.isMobile) {
+                    mobileAdapter.onLoginSuccess();
+                }
+
+                updateUserCard();
+                updateOnlineCount();
+                init();
+            }
+        });
+        
+        socket.on('user_joined', data => {
+            if (!state.otherUsers.find(u => u.id === data.user.id)) {
+                state.otherUsers.push({ ...data.user, name: data.user.nickname });
+                updateOnlineCount();
+            }
+        });
+        
+        socket.on('user_left', data => {
+            state.otherUsers = state.otherUsers.filter(u => u.id !== data.userId);
+            updateOnlineCount();
+        });
+        
+        socket.on('user_reconnected', data => {
+            const existing = state.otherUsers.find(u => u.id === data.userId);
+            if (existing) { existing.x = data.x; existing.y = data.y; }
+            else { state.otherUsers.push({ id: data.userId, nickname: data.nickname, name: data.nickname, x: data.x, y: data.y, color: '' }); }
+            updateOnlineCount();
+        });
+        
+        socket.on('user_moved', data => {
+            const user = state.otherUsers.find(u => u.id === data.userId);
+            if (user) { user.x = data.x; user.y = data.y; }
+        });
+        
+        socket.on('new_message', msg => {
+            if (!state.messages.find(m => m.id === msg.id)) {
+                state.messages.push(msg);
+                preMeasureMessage(msg);
+                if (state.messages.length > MAX_MESSAGES) {
+                    const removed = state.messages.splice(0, state.messages.length - MAX_MESSAGES);
+                    removed.forEach(m => msgMeasureCache.delete(m.id));
+                }
+            }
+        });
+        
+        socket.on('profile_updated', data => {
+            if (data.user) Object.assign(state.user, data.user);
+            setButtonLoading($('saveProfileBtn'), false);
+            closeProfilePanel();
+            updateUserCard();
+        });
+        
+        socket.on('user_profile_changed', data => {
+            const user = state.otherUsers.find(u => u.id === data.userId);
+            if (user && data.changes) Object.assign(user, data.changes);
+        });
+        
+        socket.on('friend_added', data => {
+            alert(`${data.fromUser.nickname} 已添加你为好友`);
+            socket.emit('get_friends');
+        });
+        
+        socket.on('friend_removed', data => {
+            socket.emit('get_friends');
+        });
+        
+        socket.on('friend_request', data => {
+            alert(`${data.fromUser.nickname} 向你发送了好友申请`);
+            socket.emit('get_pending_requests');
+            if ($('profilePanel').classList.contains('open')) renderPendingRequests(pendingRequests);
+        });
+        
+        socket.on('friend_accepted', data => {
+            alert(`${data.toUser.nickname} 接受了你的好友申请`);
+            socket.emit('get_friends');
+        });
+        
+        socket.on('pending_requests', data => {
+            renderPendingRequests(data.requests || []);
+        });
+        
+        socket.on('friend_result', data => {
+            if (data.success && data.action === 'request_sent') alert('好友申请已发送！');
+            else if (data.success && data.action === 'accepted') { /* 已在friend_accepted处理 */ }
+            else if (data.success && data.action === 'rejected') { /* 静默处理 */ }
+            else if (data.success && data.action === 'removed') alert('已移除好友');
+            else if (!data.success) alert(data.error || '操作失败');
+            socket.emit('get_friends');
+        });
+        
+        socket.on('friends_list', data => {
+            renderFriendsList(data.friends || []);
+        });
+        
+        socket.on('block_result', data => {
+            if (data.success) {
+                if (data.action === 'unblocked') alert('已取消屏蔽');
+                else { alert('用户已被屏蔽'); state.otherUsers = state.otherUsers.filter(u => u.id !== data.targetId); }
+                updateOnlineCount();
+            } else {
+                alert(data.error || '操作失败');
+            }
+        });
+
+        socket.on('private_message', data => { addDmMessage(data, true); });
+        socket.on('dm_cleared', data => {
+            if (data.targetId === dmTargetId) $('dmMessages').innerHTML = '';
+        });
+
+        socket.on('dm_history', data => {
+            if (data.targetId !== dmTargetId) return;
+            for (const msg of data.messages) {
+                const isFrom = msg.from_id !== state.user.id;
+                addDmMessage({ content: msg.content, timestamp: msg.timestamp }, isFrom);
+            }
+        });
+
+        socket.on('admin_result', data => {
+            if (data.success) {
+                if (data.action === 'delete_message') { state.messages = state.messages.filter(m => m.id !== pendingDeleteMessageId); }
+                if (data.action === 'cleanup') alert(`清理完成，共清理 ${data.cleaned} 个离线用户的数据`);
+                if (data.action === 'kick_guests') alert(`已注销 ${data.deleted} 个游客账号`);
+                if (data.action === 'mute') state.mutedUsers.add(data.targetId);
+                if (data.action === 'unmute') state.mutedUsers.delete(data.targetId);
+                if (data.action === 'set_admin' || data.action === 'unset_admin') {
+                    socket.emit('admin_get_all_users');
+                    const targetUser = state.otherUsers.find(u => u.id === data.targetId);
+                    if (targetUser) targetUser.isAdmin = data.action === 'set_admin';
+                }
+            } else {
+                if (data.action === 'delete_message') { showDeleteKeyDialog(pendingDeleteMessageId); $('keyError').style.display = ''; }
+                else alert(data.error || '操作失败');
+            }
+        });
+        socket.on('became_admin', () => { state.isAdmin = true; alert('✅ 您已被设为管理员'); });
+        socket.on('lost_admin', () => { state.isAdmin = false; alert('⚠️ 您的管理员身份已被取消'); });
+
+        socket.on('message_deleted', data => {
+            state.messages = state.messages.filter(m => m.id !== data.messageId);
+            const el = document.querySelector(`.msg-bubble[data-id="${data.messageId}"]`);
+            if (el) el.remove();
+        });
+
+        socket.on('system_broadcast', data => { showBroadcast(data); });
+
+        socket.on('muted', data => { alert(`⚠️ 您已被管理员 ${data.adminName} 禁言${data.reason ? '，原因：' + data.reason : ''}`); });
+        socket.on('unmuted', () => { alert('✅ 您的禁言已被解除'); });
+
+        socket.on('kicked', data => { alert(`🚫 您被管理员 ${data.adminName} 踢出${data.reason ? '，原因：' + data.reason : ''}`); });
+        socket.on('banned', data => { alert(`🚫 您被管理员 ${data.adminName} 封禁${data.reason ? '，原因：' + data.reason : ''}`); });
+
+        socket.on('messages_cleared', () => { state.messages = []; });
+
+        socket.on('user_info_detail', data => { renderUserInfo(data); });
+
+        socket.on('admin_lists', data => {
+            state.mutedUsers.clear();
+            (data.muted || []).forEach(u => state.mutedUsers.add(u.user_id));
+            renderBannedList(data.banned || []);
+            renderMutedList(data.muted || []);
+        });
+
+        socket.on('all_users_list', data => { renderAllUsers(data.users || []); });
+
+        socket.on('error', data => {
+            document.querySelectorAll('.enter-btn').forEach(btn => setButtonLoading(btn, false));
+            alert(data.message);
+        });
+        
+        let initialized = false;
+        
+        function init() {
+            if (initialized) return;
+            initialized = true;
+            
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 等DOM加载完成后再设置事件监听器（只调用一次）
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            LiquidGlass.init();
+
+            // 初始化移动端适配系统
+            try {
+                mobileAdapter = Object.create(MobileAdapter);
+                mobileAdapter.init();
+
+                // 确保立即执行一次布局计算
+                setTimeout(() => {
+                    if (mobileAdapter && mobileAdapter.isMobile) {
+                        mobileAdapter.updateLayout();
+                        console.log('✅ 移动端布局初始化完成');
+                    }
+                }, 200);
+            } catch (e) {
+                console.error('❌ 移动端适配初始化失败:', e);
+            }
+
+            // 注册Service Worker（PWA支持）
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register('/public/sw.js')
+                        .then((registration) => {
+                            console.log('✅ Service Worker 注册成功:', registration.scope);
+                        })
+                        .catch((error) => {
+                            console.log('❌ Service Worker 注册失败:', error);
+                        });
+                });
+            }
+        });
+        
+        function resizeCanvas() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+
+            // 设置Canvas尺寸
+            canvas.width = w;
+            canvas.height = h;
+
+            // 更新state
+            state.viewport.width = w;
+            state.viewport.height = h;
+
+            // 移动端优化
+            if (mobileAdapter?.isMobile) {
+                MAX_RENDER_MESSAGES = 50;
+                if (mobileAdapter?.layout) {
+                    mobileAdapter.layout.calculate();
+                }
+            } else {
+                MAX_RENDER_MESSAGES = 100;
+            }
+        }
+        
+        function setupEventListeners() {
+            $('loginButton').dataset.originalText = '登录';
+            $('registerButton').dataset.originalText = '注册并进入';
+            $('guestEnterButton').dataset.originalText = '进入世界';
+            $('saveProfileBtn').dataset.originalText = '保存';
+            
+            $('loginButton').addEventListener('click', handleLogin);
+            $('registerButton').addEventListener('click', handleRegister);
+            $('guestEnterButton').addEventListener('click', handleGuestEnter);
+            
+            $('loginPassword').addEventListener('keypress', e => { if (e.key === 'Enter') handleLogin(); });
+            $('regPassword').addEventListener('keypress', e => { if (e.key === 'Enter') handleRegister(); });
+            $('guestNickname').addEventListener('keypress', e => { if (e.key === 'Enter') handleGuestEnter(); });
+            
+            $('avatarInput').addEventListener('change', e => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = ev => {
+                        const preview = document.querySelector('#registerPanel .avatar-inner');
+                        preview.innerHTML = `<img src="${ev.target.result}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+                        state.user.avatar = ev.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+            
+            $('guestAvatarInput').addEventListener('change', e => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = ev => {
+                        const preview = document.querySelector('#guestPanel .avatar-inner');
+                        preview.innerHTML = `<img src="${ev.target.result}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+                        state.user.avatar = ev.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+            
+            $('profileAvatarInput').addEventListener('change', e => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = ev => {
+                        state.user.avatar = ev.target.result;
+                        updateProfileAvatarDisplay();
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+            
+            $('saveProfileBtn').addEventListener('click', saveProfile);
+            
+            document.querySelectorAll('.context-menu-item').forEach(item => {
+                item.addEventListener('click', () => handleContextAction(item.dataset.action));
+            });
+            
+            $('coordinatesDisplay').addEventListener('click', () => {
+                $('teleportX').value = Math.round(state.user.x);
+                $('teleportY').value = Math.round(-state.user.y);
+                teleportDialog.classList.add('active');
+                state.movementDisabled = true;
+            });
+            
+            $('teleportConfirm').addEventListener('click', teleport);
+            $('teleportCancel').addEventListener('click', () => { 
+                teleportDialog.classList.remove('active'); 
+                state.movementDisabled = false; 
+            });
+            $('teleportX').addEventListener('keypress', e => { if (e.key === 'Enter') teleport(); });
+            $('teleportY').addEventListener('keypress', e => { if (e.key === 'Enter') teleport(); });
+            teleportDialog.addEventListener('click', e => { 
+                if (e.target === teleportDialog) {
+                    teleportDialog.classList.remove('active');
+                    state.movementDisabled = false;
+                }
+            });
+            
+            window.addEventListener('keydown', e => {
+                state.keys[e.key.toLowerCase()] = true;
+                if (isTypingInInput()) return;
+                if (e.key.toLowerCase() === 't' && !messageInputContainer.classList.contains('active') && !state.movementDisabled && state.user.id) {
+                    e.preventDefault();
+                    messageInputContainer.classList.add('active');
+                    messageInput.focus();
+                }
+                if (e.key === 'Escape') {
+                    messageInputContainer.classList.remove('active');
+                    messageInput.blur();
+                    messageInput.value = '';
+                    hideContextMenu();
+                    if ($('profilePanel').classList.contains('open')) closeProfilePanel();
+                }
+                if (e.key.toLowerCase() === 'h' && state.user.id) {
+                    const hint = document.querySelector('.controls-hint');
+                    hint.classList.toggle('hint-hidden');
+                }
+            });
+            window.addEventListener('keyup', e => { state.keys[e.key.toLowerCase()] = false; });
+            
+            canvas.addEventListener('wheel', e => {
+                e.preventDefault();
+                state.viewport.scale = Math.max(0.6, Math.min(3, state.viewport.scale * (e.deltaY > 0 ? 0.9 : 1.1)));
+                state.viewport.x = state.user.x;
+                state.viewport.y = state.user.y;
+            });
+            canvas.addEventListener('click', handleCanvasClick);
+            
+            document.addEventListener('click', e => {
+                const menu = $('userContextMenu');
+                if (menu.style.display !== 'none' && !menu.contains(e.target)) {
+                    hideContextMenu();
+                }
+            });
+            
+            $('sendButton').addEventListener('click', sendMessage);
+            $('cancelButton').addEventListener('click', () => { 
+                messageInputContainer.classList.remove('active'); 
+                messageInput.blur();
+                messageInput.value = ''; 
+            });
+            messageInput.addEventListener('keypress', e => { 
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+            
+            $('closeDetail').addEventListener('click', () => messageDetail.classList.remove('active'));
+            messageDetail.addEventListener('click', e => { if (e.target === messageDetail) messageDetail.classList.remove('active'); });
+            
+            $('dmCloseBtn').addEventListener('click', closeDMPanel);
+            $('dmClearBtn').addEventListener('click', () => {
+                if (!dmTargetId) return;
+                if (confirm('确定清空与该用户的全部私聊记录吗？此操作不可恢复。')) {
+                    socket.emit('clear_dm_history', { targetId: dmTargetId });
+                    $('dmMessages').innerHTML = '';
+                }
+            });
+            $('dmSendBtn').addEventListener('click', sendDM);
+            $('dmInput').addEventListener('keypress', e => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    sendDM();
+                }
+            });
+
+            $('adminCloseBtn').addEventListener('click', closeAdminPanel);
+            document.querySelectorAll('.admin-tab').forEach(tab => {
+                tab.addEventListener('click', () => switchAdminTab(tab.dataset.tab));
+            });
+            $('sendBroadcastBtn').addEventListener('click', () => {
+                const content = $('broadcastInput').value.trim();
+                if (!content) return;
+                socket.emit('admin_broadcast', { content });
+                $('broadcastInput').value = '';
+            });
+            $('refreshUsersBtn').addEventListener('click', () => socket.emit('admin_get_all_users'));
+            $('refreshListsBtn').addEventListener('click', () => socket.emit('admin_get_lists'));
+            $('cleanupBtn').addEventListener('click', () => {
+                if (confirm(`确定清理超过 ${$('cleanupDays').value} 天未活跃的用户数据吗？`)) {
+                    socket.emit('admin_cleanup', { days: parseInt($('cleanupDays').value) || 30 });
+                }
+            });
+            $('clearMsgBtn').addEventListener('click', () => {
+                if (confirm('确定清空所有聊天记录吗？此操作不可恢复！')) {
+                    socket.emit('admin_clear_messages');
+                }
+            });
+            $('kickGuestsBtn').addEventListener('click', () => {
+                if (confirm('确定注销所有游客账号吗？游客将被立即踢下线，其数据将被永久删除！')) {
+                    socket.emit('admin_kick_guests');
+                }
+            });
+            $('keyCancelBtn').addEventListener('click', hideDeleteKeyDialog);
+            $('keyConfirmBtn').addEventListener('click', confirmDeleteMessage);
+            $('deleteKeyDialog').addEventListener('click', e => { if (e.target === $('deleteKeyDialog')) hideDeleteKeyDialog(); });
+            $('deleteKeyInput').addEventListener('keypress', e => { if (e.key === 'Enter') confirmDeleteMessage(); if (e.key === 'Escape') hideDeleteKeyDialog(); });
+
+            document.addEventListener('contextmenu', e => {
+                const msgEl = e.target.closest('.msg-bubble');
+                if (msgEl && state.isAdmin && msgEl.dataset.id && msgEl.dataset.authorId !== state.user.id) {
+                    e.preventDefault();
+                    showDeleteKeyDialog(msgEl.dataset.id);
+                }
+            });
+        }
+        
+        function teleport() {
+            const x = parseInt($('teleportX').value);
+            const y = parseInt($('teleportY').value);
+            if (!isNaN(x) && !isNaN(y)) {
+                const internalY = -y;
+                state.user.x = x; state.user.y = internalY;
+                state.viewport.x = x; state.viewport.y = internalY;
+                socket.emit('move', { x, y: internalY });
+                teleportDialog.classList.remove('active');
+                state.movementDisabled = false;
+            }
+        }
+        
+        function sendMessage() {
+            const content = messageInput.value.trim();
+            if (!content) return;
+            socket.emit('send_message', { 
+                content, 
+                x: state.user.x, 
+                y: state.user.y, 
+                friendOnly: $('friendOnlyToggle').checked 
+            });
+            messageInput.blur();
+            messageInputContainer.classList.remove('active');
+            messageInput.value = '';
+        }
+        
+        function handleCanvasClick(e) {
+            if (messageInputContainer.classList.contains('active')) return;
+            hideContextMenu();
+            const worldX = (e.clientX - state.viewport.width / 2) / state.viewport.scale + state.viewport.x;
+            const worldY = (e.clientY - state.viewport.height / 2) / state.viewport.scale + state.viewport.y;
+            
+            for (const user of state.otherUsers) {
+                const dist = Math.hypot(user.x - worldX, user.y - worldY);
+                if (dist < 40 / state.viewport.scale) {
+                    showContextMenu(e.clientX, e.clientY, user);
+                    e.stopPropagation();
+                    return;
+                }
+            }
+            
+            const sorted = [...state.messages].sort((a, b) => {
+                const distA = Math.hypot(a.x - state.user.x, a.y - state.user.y);
+                const distB = Math.hypot(b.x - state.user.x, b.y - state.user.y);
+                return distA - distB;
+            });
+            
+            for (const msg of sorted) {
+                if (msg.bubbleWidth && msg.bubbleHeight) {
+                    if (Math.abs(worldX - msg.x) < msg.bubbleWidth/2 && Math.abs(worldY - msg.y) < msg.bubbleHeight/2) {
+                        $('detailAuthor').textContent = msg.author;
+                        $('detailContent').textContent = msg.content;
+                        $('detailTime').textContent = formatTime(msg.timestamp);
+                        messageDetail.classList.add('active');
+                        return;
+                    }
+                }
+            }
+        }
+        
+        function updateUserCard() {
+            const card = $('userCard');
+            if (!state.user.id) { card.style.display = 'none'; return; }
+            card.style.display = 'flex';
+            $('userCardName').textContent = state.user.name;
+            if (state.user.avatar) {
+                $('userCardAvatar').src = state.user.avatar;
+                $('userCardAvatar').style.display = 'block';
+            } else {
+                $('userCardAvatar').style.display = 'none';
+            }
+        }
+
+        function updateOnlineCount() {
+            onlineCount.textContent = state.otherUsers.length + (state.user.id ? 1 : 0);
+        }
+        
+        function formatTime(ts) {
+            const d = new Date(ts), now = new Date();
+            if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            const y = new Date(now); y.setDate(y.getDate()-1);
+            if (d.toDateString() === y.toDateString()) return '昨天 ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        }
+        
+        let lastCoordUpdate = 0;
+        const COORD_UPDATE_MS = 80;
+        
+        function gameLoop() {
+            updateUserPosition();
+            render();
+            const now = performance.now();
+            if (now - lastCoordUpdate >= COORD_UPDATE_MS) {
+                xCoord.textContent = Math.round(state.user.x);
+                yCoord.textContent = Math.round(-state.user.y);
+                lastCoordUpdate = now;
+            }
+            requestAnimationFrame(gameLoop);
+        }
+        
+        let lastMoveX = 0, lastMoveY = 0;
+        let lastMoveTime = 0;
+        const MOVE_THROTTLE_MS = 50;
+        const MOVE_THRESHOLD = 0.15;
+        
+        function updateUserPosition() {
+            if (state.movementDisabled || !state.user.id) return;
+            if (isTypingInInput()) return;
+
+            const speed = 5 / state.viewport.scale;
+            let moved = false;
+
+            // 检测是否为移动端，使用摇杆控制
+            if (mobileAdapter && mobileAdapter.isMobile) {
+                const joystickInput = mobileAdapter.getJoystickInput();
+
+                if (joystickInput.x !== 0 || joystickInput.y !== 0) {
+                    state.user.x += joystickInput.x * speed;
+                    state.user.y += joystickInput.y * speed;
+                    state.viewport.x = state.user.x;
+                    state.viewport.y = state.user.y;
+                    moved = true;
+                }
+            } else {
+                // 桌面端：键盘控制
+                if (state.keys['w'] || state.keys['arrowup']) { state.user.y -= speed; state.viewport.y -= speed; moved = true; }
+                if (state.keys['s'] || state.keys['arrowdown']) { state.user.y += speed; state.viewport.y += speed; moved = true; }
+                if (state.keys['a'] || state.keys['arrowleft']) { state.user.x -= speed; state.viewport.x -= speed; moved = true; }
+                if (state.keys['d'] || state.keys['arrowright']) { state.user.x += speed; state.viewport.x += speed; moved = true; }
+            }
+
+            if (moved) {
+                const now = performance.now();
+                const dx = state.user.x - lastMoveX;
+                const dy = state.user.y - lastMoveY;
+                if ((now - lastMoveTime >= MOVE_THROTTLE_MS) && (dx * dx + dy * dy > MOVE_THRESHOLD * MOVE_THRESHOLD)) {
+                    socket.emit('move', { x: state.user.x, y: state.user.y });
+                    lastMoveX = state.user.x;
+                    lastMoveY = state.user.y;
+                    lastMoveTime = now;
+                }
+            }
+        }
+        
+        function worldToScreen(wx, wy) {
+            return [
+                (wx - state.viewport.x) * state.viewport.scale + state.viewport.width / 2,
+                (wy - state.viewport.y) * state.viewport.scale + state.viewport.height / 2
+            ];
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            renderGrid();
+            renderMessages();
+            renderOtherUsers();
+            if (state.user.id) renderCurrentUser();
+        }
+        
+        function renderGrid() {
+            const gridSize = 50;
+            const vw = state.viewport.width / state.viewport.scale;
+            const vh = state.viewport.height / state.viewport.scale;
+            const extend = 4;
+            const parallax = 0.65;
+            
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            
+            const bgGrad = ctx.createRadialGradient(
+                state.viewport.width / 2, state.viewport.height / 2, 0,
+                state.viewport.width / 2, state.viewport.height / 2, Math.max(state.viewport.width, state.viewport.height) * 0.8
+            );
+            bgGrad.addColorStop(0, '#edf0f6');
+            bgGrad.addColorStop(1, '#d8deea');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, state.viewport.width, state.viewport.height);
+            
+            const coverW = vw / parallax;
+            const coverH = vh / parallax;
+            const worldStartX = Math.floor((state.viewport.x - coverW / 2) / gridSize) * gridSize - extend * gridSize;
+            const worldStartY = Math.floor((state.viewport.y - coverH / 2) / gridSize) * gridSize - extend * gridSize;
+            const numX = Math.ceil(coverW / gridSize) + extend * 2 + 1;
+            const numY = Math.ceil(coverH / gridSize) + extend * 2 + 1;
+            
+            const sc = state.viewport.scale * parallax;
+            const cx = state.viewport.width / 2;
+            const cy = state.viewport.height / 2;
+            const maxDotR = Math.max(1, Math.min(6, state.viewport.scale * 3));
+            const minDotR = maxDotR * 0.15;
+            const rangeR = maxDotR - minDotR;
+            const invMaxDist = 1 / Math.hypot(cx, cy);
+            const screenMaxX = state.viewport.width + gridSize;
+            const screenMaxY = state.viewport.height + gridSize;
+            
+            ctx.fillStyle = 'rgba(72, 82, 115, 0.38)';
+            for (let i = 0; i <= numX; i++) {
+                const wx = worldStartX + i * gridSize;
+                const sx = (wx - state.viewport.x) * sc + cx;
+                if (sx < -gridSize || sx > screenMaxX) continue;
+                const dx = sx - cx;
+                const dx2 = dx * dx;
+                for (let j = 0; j <= numY; j++) {
+                    const wy = worldStartY + j * gridSize;
+                    const sy = (wy - state.viewport.y) * sc + cy;
+                    if (sy < -gridSize || sy > screenMaxY) continue;
+                    const dy = sy - cy;
+                    const dist = Math.sqrt(dx2 + dy * dy);
+                    const f = 1 - dist * invMaxDist;
+                    if (f > 0) {
+                        const r = minDotR + rangeR * f * f;
+                        if (r >= 0.5) {
+                            ctx.beginPath();
+                            ctx.arc(sx, sy, r, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                }
+            }
+            
+            ctx.restore();
+        }
+        
+        function renderMessages() {
+            const visibleRadius = Math.max(state.viewport.width, state.viewport.height) / state.viewport.scale / 2 * 1.5;
+            const scale = state.viewport.scale;
+            const cappedScale = Math.min(scale, 2.5);
+            
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            
+            ctx.font = `${14 * cappedScale}px -apple-system, "Noto Sans SC", sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            
+            let rendered = 0;
+            for (let i = state.messages.length - 1; i >= 0 && rendered < MAX_RENDER_MESSAGES; i--) {
+                const msg = state.messages[i];
+                const dist = Math.hypot(msg.x - state.viewport.x, msg.y - state.viewport.y);
+                if (dist > visibleRadius) continue;
+                
+                const cached = msgMeasureCache.get(msg.id);
+                if (!cached) { preMeasureMessage(msg); continue; }
+                
+                const { lines, bubbleW, bubbleH, isLong, padX, padY, lineHeight } = cached;
+                const alpha = 0.9;
+                
+                const rawColor = msg.authorColor || msg.color || '#007aff';
+                const hex = rawColor.replace('#', '');
+                const cr = parseInt(hex.substr(0, 2), 16);
+                const cg = parseInt(hex.substr(2, 2), 16);
+                const cb = parseInt(hex.substr(4, 2), 16);
+                
+                const [sbx, sby] = worldToScreen(msg.x, msg.y);
+                const sbW = bubbleW * cappedScale;
+                const sbH = bubbleH * cappedScale;
+                const bx = sbx - sbW / 2;
+                const by = sby - sbH / 2;
+                const r = Math.min(sbH / 2, 10 * cappedScale);
+                
+                ctx.save();
+
+                ctx.shadowColor = `rgba(0, 0, 0, ${0.08 * alpha})`;
+                ctx.shadowBlur = Math.min(14 * cappedScale * alpha, 20);
+                ctx.shadowOffsetY = Math.min(3 * cappedScale * alpha, 6);
+                ctx.beginPath();
+                ctx.roundRect(bx, by, sbW, sbH, r);
+                if (msg.authorIsAdmin) {
+                    ctx.fillStyle = `rgba(249, 115, 22, ${0.1 * alpha})`;
+                } else {
+                    ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${0.08 * alpha})`;
+                }
+                ctx.fill();
+                ctx.shadowColor = 'transparent';
+                if (msg.authorIsAdmin) {
+                    ctx.fillStyle = 'rgba(249,115,22,0.7)';
+                    ctx.fillRect(bx, by + r, Math.max(3 * cappedScale, 2), sbH - 2 * r);
+                }
+                
+                const specGrad = ctx.createLinearGradient(bx, by - sbH * 0.4, bx, by + sbH * 0.3);
+                specGrad.addColorStop(0, `rgba(255, 255, 255, ${0.4 * alpha})`);
+                specGrad.addColorStop(0.35, `rgba(255, 255, 255, ${0.08 * alpha})`);
+                specGrad.addColorStop(1, `rgba(255, 255, 255, 0)`);
+                ctx.beginPath();
+                ctx.roundRect(bx + cappedScale, by + cappedScale, sbW - 2 * cappedScale, sbH - 2 * cappedScale, [Math.max(1,r-cappedScale),Math.max(1,r-cappedScale),Math.max(1,r-cappedScale),Math.max(1,r-cappedScale)]);
+                ctx.fillStyle = specGrad;
+                ctx.fill();
+                
+                ctx.fillStyle = `rgba(28, 28, 30, ${alpha * 0.85})`;
+                const startX = bx + padX * cappedScale;
+                const startY = by + padY * cappedScale;
+                const scaledLH = lineHeight * cappedScale;
+                
+                const renderLines = isLong ? Math.min(lines.length, 2) : lines.length;
+                for (let li = 0; li < renderLines; li++) {
+                    ctx.fillText(lines[li], startX, startY + li * scaledLH);
+                }
+                
+                if (isLong) {
+                    ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${alpha * 0.8})`;
+                    ctx.font = `500 ${11 * cappedScale}px -apple-system, "Noto Sans SC"`;
+                    ctx.fillText('点击查看全文', startX, startY + 2 * scaledLH - cappedScale);
+                }
+                
+                ctx.restore();
+                
+                msg.bubbleWidth = bubbleW;
+                msg.bubbleHeight = bubbleH;
+                rendered++;
+            }
+            
+            ctx.restore();
+        }
+        
+        function renderOtherUsers() {
+            const visibleRadius = Math.max(state.viewport.width, state.viewport.height) / state.viewport.scale / 2 * 1.5;
+            const scale = state.viewport.scale;
+            
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            
+            for (const user of state.otherUsers) {
+                const dist = Math.hypot(user.x - state.viewport.x, user.y - state.viewport.y);
+                if (dist > visibleRadius) continue;
+                
+                const distToUser = Math.hypot(user.x - state.user.x, user.y - state.user.y);
+                const baseScale = Math.max(0.4, Math.min(1.5, 1 / (distToUser * 0.001 + 0.6)));
+                const userSize = Math.min(22 * baseScale * scale, 60);
+                const alpha = 0.9;
+                const isFriend = myFriends.some(f => f.id === user.id);
+                
+                const [sux, suy] = worldToScreen(user.x, user.y);
+                
+                const hex = user.color.replace('#', '');
+                const cr = parseInt(hex.substr(0, 2), 16);
+                const cg = parseInt(hex.substr(2, 2), 16);
+                const cb = parseInt(hex.substr(4, 2), 16);
+                
+                if (isFriend) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(sux, suy, userSize + 4 * scale, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${0.25 * alpha})`;
+                    ctx.fill();
+                    ctx.restore();
+                }
+                
+                if (user.avatar) {
+                    let img = userAvatars.get(user.avatar);
+                    if (!img) {
+                        img = new Image();
+                        img.src = user.avatar;
+                        userAvatars.set(user.avatar, img);
+                    }
+                    if (img.complete) {
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.arc(sux, suy, userSize, 0, Math.PI * 2);
+                        ctx.clip();
+                        ctx.drawImage(img, sux - userSize, suy - userSize, userSize * 2, userSize * 2);
+                        ctx.restore();
+                        
+                        ctx.beginPath();
+                        ctx.arc(sux, suy, userSize, 0, Math.PI * 2);
+                        if (isFriend) {
+                            ctx.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, ${alpha})`;
+                            ctx.lineWidth = Math.min(2.5 * scale, 5);
+                        } else {
+                            ctx.strokeStyle = `rgba(255, 255, 255, ${0.8 * alpha})`;
+                            ctx.lineWidth = Math.min(1.5 * scale, 4);
+                        }
+                        ctx.stroke();
+                    } else {
+                        ctx.beginPath();
+                        ctx.arc(sux, suy, userSize, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${alpha})`;
+                        ctx.fill();
+                        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.95})`;
+                        ctx.font = `bold ${userSize * 0.7}px "Noto Sans SC"`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(user.name.charAt(0), sux, suy);
+                    }
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(sux, suy, userSize, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${alpha})`;
+                    ctx.fill();
+                    ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.95})`;
+                    ctx.font = `bold ${userSize * 0.7}px "Noto Sans SC"`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(user.name.charAt(0), sux, suy);
+                }
+                
+                const nameSize = Math.max(10, Math.min(12 * scale, 18));
+                ctx.font = `${nameSize}px -apple-system, "Noto Sans SC"`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                if (user.isSuperAdmin) {
+                    ctx.fillStyle = `rgba(234, 179, 8, ${alpha})`;
+                    ctx.font = `${Math.round(nameSize)}px -apple-system, "Noto Sans SC", sans-serif`;
+                    ctx.fillText(user.name + ' 👑站长', sux, suy + userSize + 5 * scale);
+                } else if (user.isAdmin) {
+                    ctx.fillStyle = `rgba(249, 115, 22, ${alpha})`;
+                    ctx.font = `${Math.round(nameSize)}px -apple-system, "Noto Sans SC", sans-serif`;
+                    ctx.fillText(user.name + ' 🛡️管理员', sux, suy + userSize + 5 * scale);
+                } else if (isFriend) {
+                    ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${alpha})`;
+                    ctx.font = `${nameSize}px -apple-system, "Noto Sans SC", sans-serif`;
+                    ctx.font = `${Math.round(nameSize)}px -apple-system, "Noto Sans SC", sans-serif`;
+                    const nameText = user.name + ' ★';
+                    ctx.fillText(nameText, sux, suy + userSize + 5 * scale);
+                } else {
+                    ctx.fillStyle = `rgba(29, 29, 31, ${alpha})`;
+                    ctx.fillText(user.name, sux, suy + userSize + 5 * scale);
+                }
+            }
+            
+            ctx.restore();
+        }
+        
+        function renderCurrentUser() {
+            const scale = state.viewport.scale;
+            
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            
+            const [sux, suy] = worldToScreen(state.user.x, state.user.y);
+            const crossSize = Math.max(8, Math.min(18, scale * 12));
+            const gap = crossSize * 0.35;
+            const thick = Math.max(1.5, scale * 1.5);
+            
+            ctx.strokeStyle = state.user.color;
+            ctx.lineWidth = thick;
+            ctx.lineCap = 'round';
+            ctx.globalAlpha = 0.85;
+            
+            ctx.beginPath();
+            ctx.moveTo(sux - crossSize, suy);
+            ctx.lineTo(sux - gap, suy);
+            ctx.moveTo(sux + gap, suy);
+            ctx.lineTo(sux + crossSize, suy);
+            ctx.moveTo(sux, suy - crossSize);
+            ctx.lineTo(sux, suy - gap);
+            ctx.moveTo(sux, suy + gap);
+            ctx.lineTo(sux, suy + crossSize);
+            ctx.stroke();
+            
+            ctx.globalAlpha = 0.25;
+            ctx.lineWidth = thick * 2.5;
+            ctx.beginPath();
+            ctx.arc(sux, suy, crossSize * 0.6, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+    </script>
+</body>
+</html>
