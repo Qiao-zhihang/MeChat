@@ -1,394 +1,161 @@
-# MeChat - 开放世界即时通讯
+# MeChat
 
-## 项目概述
+> 2D 开放世界实时聊天应用 —— 在虚拟空间中自由漫步，与世界各地的用户实时交流。
 
-MeChat 是一个基于 2D 开放世界的实时聊天应用程序，用户可以在虚拟空间中自由移动、发送消息、添加好友并进行私信交流。项目采用现代 Web 技术栈构建，具有实时通信、用户管理、消息持久化等完整功能。
+## 功能一览
 
-## 核心特性
+| 类别 | 功能 |
+|------|------|
+| **开放世界** | 无限 2D 平面、WASD/方向键/虚拟摇杆移动、鼠标滚轮/双指缩放、坐标传送 |
+| **即时通讯** | 世界留言（基于位置）、好友专属消息、一对一私信、消息历史持久化 |
+| **社交系统** | 好友申请/接受/拒绝、好友列表（含在线状态）、一键传送至好友、用户屏蔽 |
+| **用户系统** | 账号注册/登录、游客模式（免注册）、自定义昵称/头像/主题色/个性签名、会话持久化 |
+| **管理后台** | 管理员禁言/踢出/封禁/解封、站长任命/撤销管理员、全服广播、消息删除（密钥验证）、离线数据清理 |
+| **移动端** | 虚拟摇杆、触摸手势、响应式布局、PWA 支持 |
+| **视觉设计** | Apple 风格毛玻璃 UI、液态玻璃折射特效、Canvas 点阵网格（视差效果）、距离自适应角色大小 |
 
-### 🌍 2D 开放世界
-- 无限虚拟空间，用户可以自由移动
-- 实时位置同步，查看其他在线用户
-- 基于位置的消息系统
+## 技术栈
 
-### 💬 实时通讯
-- 公共频道消息广播
-- 好友专属消息（仅好友可见）
-- 一对一私信系统
-- 消息历史记录持久化
+**后端**：Node.js / Express / Socket.IO / sql.js (SQLite)
 
-### 👥 社交功能
-- 好友系统（添加/删除好友）
-- 好友请求管理
-- 用户屏蔽功能
-- 在线用户列表
+**前端**：HTML5 Canvas / Socket.IO Client / Tailwind CSS / Font Awesome / Google Fonts (Orbitron + Noto Sans SC)
 
-### 🔐 用户系统
-- 游客模式（无需注册）
-- 账号注册与登录
-- 自定义昵称、头像、颜色
-- 个人简介设置
-
-### 👮 管理功能
-- 管理员权限系统
-- 用户禁言/解禁
-- 用户封禁/解封
-- 消息删除
-- 系统广播
-- 用户清理
-
-## 技术架构
-
-### 后端技术栈
-- **Node.js** - 运行时环境
-- **Express** - Web 服务器框架
-- **Socket.IO** - 实时双向通信
-- **sql.js** - SQLite 数据库（内存 + 文件持久化）
-- **CORS** - 跨域支持
-
-### 前端技术栈
-- **HTML5 Canvas** - 2D 渲染
-- **Socket.IO Client** - 实时通信
-- **Tailwind CSS** - 样式框架
-- **Font Awesome** - 图标库
-- **Google Fonts** - 字体
-
-### 数据存储
-- **SQLite** - 本地文件数据库
-- 数据文件位置：`data/mechat.db`
+**数据存储**：SQLite（内存数据库 + 定时文件持久化），数据文件 `data/mechat.db`
 
 ## 项目结构
 
 ```
 MeChat/
 ├── server/
-│   ├── index.js          # 主服务器入口
-│   └── database.js       # 数据库操作模块
+│   ├── index.js            # Express 服务器 + Socket.IO 事件处理
+│   └── database.js         # SQLite 数据库操作层
 ├── data/
-│   └── mechat.db         # SQLite 数据库文件
+│   └── mechat.db           # SQLite 数据库文件（自动生成）
 ├── public/
-│   └── og-image.png      # 网站图标
-├── index.html            # 前端主页面
-├── package.json          # 项目配置
-└── README.md             # 项目文档
+│   └── og-image.png        # 网站图标
+├── index.html              # 前端单页应用（内嵌 CSS + JS）
+├── package.json
+└── .gitignore
 ```
 
 ## 快速开始
 
-### 环境要求
-- Node.js >= 18.0.0
-- npm 或 yarn
-
-### 安装步骤
-
-1. 克隆项目
 ```bash
-git clone <repository-url>
-cd MeChat
-```
+# 环境要求：Node.js >= 18.0.0
 
-2. 安装依赖
-```bash
+# 1. 安装依赖
 npm install
-```
 
-3. 启动服务器
-```bash
+# 2. 启动服务器
 npm start
+
+# 3. 打开浏览器访问
+# http://localhost:3000
 ```
 
-4. 访问应用
-打开浏览器访问 `http://localhost:3000`
-
-### 开发模式
-```bash
-npm run dev
-```
-
-## 配置说明
+## 配置
 
 ### 环境变量
-- `PORT` - 服务器端口（默认：3000）
 
-### 管理员配置
-在 `server/index.js` 中配置：
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PORT` | `3000` | 服务器监听端口 |
+
+### 管理员与站长
+
+在 `server/index.js` 顶部配置：
+
 ```javascript
-const ADMIN_KEY = 'Qiao20100102';  // 管理员密钥
-const SUPER_ADMINS = ['Mecat', '千帆栖鸥'];  // 超级管理员用户名
+const ADMIN_KEY = 'Qiao20100102';           // 管理员操作密钥（删除消息等敏感操作需验证）
+const SUPER_ADMINS = ['Mecat', '千帆栖鸥'];  // 站长用户名（启动时自动设为站长）
 ```
 
-## API 文档
-
-### REST API
-
-#### 健康检查
-```
-GET /api/health
-```
-
-#### 用户注册
-```
-POST /api/register
-Body: { username, password, nickname?, color? }
-```
-
-#### 用户登录
-```
-POST /api/login
-Body: { username, password }
-```
-
-#### 获取在线用户
-```
-GET /api/users
-```
-
-#### 获取用户信息
-```
-GET /api/user/:id
-```
-
-#### 获取消息
-```
-GET /api/messages?limit=100&x=0&y=0&radius=2000
-```
-
-#### 清空消息
-```
-POST /api/clear-messages
-```
-
-### Socket.IO 事件
-
-#### 客户端 → 服务器
-
-| 事件名 | 描述 | 参数 |
-|--------|------|------|
-| `register` | 注册用户 | `{ userId?, nickname?, avatar?, color? }` |
-| `update_profile` | 更新资料 | `{ nickname?, avatar?, color?, bio? }` |
-| `move` | 移动位置 | `{ x, y }` |
-| `send_message` | 发送消息 | `{ content, x?, y?, friendOnly? }` |
-| `send_private_message` | 发送私信 | `{ targetId, content }` |
-| `send_friend_request` | 发送好友请求 | `{ targetId }` |
-| `accept_friend_request` | 接受好友请求 | `{ fromId }` |
-| `reject_friend_request` | 拒绝好友请求 | `{ fromId }` |
-| `remove_friend` | 删除好友 | `{ targetId }` |
-| `block_user` | 屏蔽用户 | `{ targetId }` |
-| `unblock_user` | 取消屏蔽 | `{ targetId }` |
-| `get_friends` | 获取好友列表 | - |
-| `get_pending_requests` | 获取待处理请求 | - |
-| `get_dm_history` | 获取私信历史 | `{ targetId }` |
-| `clear_dm_history` | 清空私信历史 | `{ targetId }` |
-
-#### 管理员事件
-
-| 事件名 | 描述 | 参数 |
-|--------|------|------|
-| `admin_delete_message` | 删除消息 | `{ key, messageId }` |
-| `admin_mute_user` | 禁言用户 | `{ targetId, reason }` |
-| `admin_unmute_user` | 解禁用户 | `{ targetId }` |
-| `admin_ban_user` | 封禁用户 | `{ targetId, reason }` |
-| `admin_unban_user` | 解封用户 | `{ targetId }` |
-| `admin_kick_user` | 踢出用户 | `{ targetId, reason }` |
-| `admin_broadcast` | 系统广播 | `{ content }` |
-| `admin_clear_messages` | 清空所有消息 | `{ key }` |
-| `admin_cleanup` | 清理不活跃用户 | `{ days }` |
-| `admin_set_admin` | 设置管理员 | `{ targetId }` |
-| `admin_unset_admin` | 取消管理员 | `{ targetId }` |
-| `admin_get_lists` | 获取封禁/禁言列表 | - |
-| `admin_get_all_users` | 获取所有用户 | - |
-
-#### 服务器 → 客户端
-
-| 事件名 | 描述 | 数据 |
-|--------|------|------|
-| `registered` | 注册成功 | `{ user, isAdmin, isSuperAdmin, onlineUsers, recentMessages }` |
-| `user_joined` | 用户加入 | `{ user }` |
-| `user_left` | 用户离开 | `{ userId, nickname }` |
-| `user_moved` | 用户移动 | `{ userId, x, y }` |
-| `new_message` | 新消息 | `message` |
-| `private_message` | 私信 | `message` |
-| `friend_request` | 好友请求 | `{ fromUser }` |
-| `friend_accepted` | 好友请求被接受 | `{ toUser }` |
-| `friends_list` | 好友列表 | `{ friends }` |
-| `pending_requests` | 待处理请求 | `{ requests }` |
-| `dm_history` | 私信历史 | `{ targetId, messages }` |
-| `error` | 错误消息 | `{ message }` |
-| `system_broadcast` | 系统广播 | `message` |
-| `muted` | 被禁言 | `{ reason, adminName }` |
-| `unmuted` | 被解禁 | - |
-| `banned` | 被封禁 | `{ reason, adminName }` |
-| `kicked` | 被踢出 | `{ reason, adminName }` |
-
-## 数据库设计
-
-### 表结构
-
-#### users - 用户表
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | TEXT PRIMARY KEY | 用户唯一ID |
-| username | TEXT UNIQUE | 用户名 |
-| password_hash | TEXT | 密码哈希 |
-| nickname | TEXT | 昵称 |
-| avatar | TEXT | 头像URL |
-| x | REAL | X坐标 |
-| y | REAL | Y坐标 |
-| color | TEXT | 主题颜色 |
-| bio | TEXT | 个人简介 |
-| is_admin | INTEGER | 是否管理员 |
-| is_super_admin | INTEGER | 是否超级管理员 |
-| last_active | INTEGER | 最后活跃时间 |
-| created_at | INTEGER | 创建时间 |
-
-#### friends - 好友关系表
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| user_id | TEXT | 用户ID |
-| friend_id | TEXT | 好友ID |
-| created_at | INTEGER | 创建时间 |
-
-#### friend_requests - 好友请求表
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| from_id | TEXT | 发送者ID |
-| to_id | TEXT | 接收者ID |
-| status | TEXT | 状态：pending/accepted/rejected |
-| created_at | INTEGER | 创建时间 |
-
-#### blocks - 屏蔽关系表
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| user_id | TEXT | 用户ID |
-| blocked_id | TEXT | 被屏蔽用户ID |
-| created_at | INTEGER | 创建时间 |
-
-#### messages - 消息表
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | TEXT PRIMARY KEY | 消息ID |
-| user_id | TEXT | 用户ID |
-| x | REAL | X坐标 |
-| y | REAL | Y坐标 |
-| content | TEXT | 内容 |
-| author | TEXT | 作者昵称 |
-| author_id | TEXT | 作者ID |
-| author_color | TEXT | 作者颜色 |
-| timestamp | INTEGER | 时间戳 |
-
-#### private_messages - 私信表
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | TEXT PRIMARY KEY | 消息ID |
-| from_id | TEXT | 发送者ID |
-| to_id | TEXT | 接收者ID |
-| content | TEXT | 内容 |
-| from_name | TEXT | 发送者昵称 |
-| from_avatar | TEXT | 发送者头像 |
-| from_color | TEXT | 发送者颜色 |
-| timestamp | INTEGER | 时间戳 |
-
-#### banned_users - 封禁用户表
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| user_id | TEXT PRIMARY KEY | 用户ID |
-| banned_by | TEXT | 操作管理员ID |
-| reason | TEXT | 原因 |
-| created_at | INTEGER | 封禁时间 |
-
-#### muted_users - 禁言用户表
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| user_id | TEXT PRIMARY KEY | 用户ID |
-| muted_by | TEXT | 操作管理员ID |
-| reason | TEXT | 原因 |
-| created_at | INTEGER | 禁言时间 |
+站长拥有管理员全部权限，额外可任命/撤销管理员、编辑用户信息。
 
 ## 操作指南
 
-### 基本操作
+### 桌面端
 
-#### 移动
-- 使用 **WASD** 或 **方向键** 移动
-- 鼠标点击目标位置自动移动
+| 操作 | 按键/方式 |
+|------|-----------|
+| 移动 | `W` `A` `S` `D` 或方向键 |
+| 打开消息输入 | `Enter` 或 `T` |
+| 发送消息 | 输入内容后按 `Enter` |
+| 取消输入 | `Esc` |
+| 缩放视野 | 鼠标滚轮（0.6x ~ 3x） |
+| 查看用户菜单 | 左键点击用户头像 |
+| 管理员删除消息 | 右键点击消息气泡 |
+| 坐标传送 | 点击底部坐标栏，输入目标坐标 |
+| 切换操作提示 | `H` |
 
-#### 发送消息
-- 按 **Enter** 或 **T** 打开消息输入框
-- 输入内容后按 **Enter** 发送
-- 按 **Esc** 取消发送
+### 移动端
 
-#### 好友功能
-- 点击用户头像查看资料
-- 发送好友请求
-- 接受/拒绝好友请求
-- 删除好友
+| 操作 | 方式 |
+|------|------|
+| 移动 | 左下角虚拟摇杆 |
+| 缩放 | 双指捏合 |
+| 查看用户菜单 | 单击用户头像 |
+| 重置缩放 | 双击画布 |
 
-#### 私信
-- 在好友列表中选择好友
-- 打开私信对话框
-- 发送私密消息
+### 好友与私信
+
+1. 点击其他用户头像 → 选择「添加好友」
+2. 对方在个人资料面板中接受请求
+3. 好友列表中点击「私信」按钮进入一对一聊天
 
 ### 管理员操作
 
-#### 获取管理员权限
-1. 注册账号
-2. 超级管理员使用密钥设置管理员权限
+通过个人资料面板 → 管理面板进入，包含四个标签页：
 
-#### 管理命令
-- **删除消息** - 删除违规消息
-- **禁言用户** - 禁止用户发送消息
-- **封禁用户** - 禁止用户登录
-- **踢出用户** - 强制断开用户连接
-- **系统广播** - 向所有用户发送通知
-- **清理用户** - 删除不活跃账号
+- **公告**：发送全服广播（顶部横幅展示 6 秒）
+- **用户**：搜索用户、查看详情、编辑昵称/签名、任命/撤销管理员
+- **封禁/禁言**：查看封禁和禁言列表、执行封禁/禁言/解封/解禁操作
+- **系统**：清理离线数据（可配置天数）、清空所有聊天记录
 
-## 安全说明
+## 数据库结构
 
-### 密码安全
-- 使用 SHA256 哈希存储
-- 添加盐值增强安全性
+共 8 张表：
 
-### 权限控制
-- 管理员密钥验证
-- 超级管理员特权
-- 操作日志记录
+| 表名 | 用途 | 主要字段 |
+|------|------|----------|
+| `users` | 用户信息 | id, username, password_hash, nickname, avatar, x, y, color, bio, is_admin, is_super_admin, last_active, created_at |
+| `friends` | 好友关系（双向） | user_id, friend_id, created_at |
+| `friend_requests` | 好友申请 | from_id, to_id, status (pending/accepted/rejected), created_at |
+| `blocks` | 屏蔽关系 | user_id, blocked_id, created_at |
+| `messages` | 世界消息 | id, x, y, content, author, author_id, author_color, timestamp |
+| `private_messages` | 私信记录 | id, from_id, to_id, content, from_name, from_avatar, from_color, timestamp |
+| `banned_users` | 封禁记录 | user_id, banned_by, reason, created_at |
+| `muted_users` | 禁言记录 | user_id, muted_by, reason, created_at |
 
-### 数据保护
-- 定期自动保存数据库
-- 异常关闭数据恢复
-- 敏感操作验证
+## API 概览
 
-## 性能优化
+### REST API（仅用于认证）
 
-### 数据库优化
-- 内存数据库 + 定期持久化
-- 批量写入操作
-- 自动清理过期数据
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/health` | 健康检查 |
+| POST | `/api/register` | 用户注册 |
+| POST | `/api/login` | 用户登录 |
+| GET | `/api/users` | 在线用户列表 |
+| GET | `/api/user/:id` | 用户详情 |
+| GET | `/api/messages` | 消息列表（支持坐标范围筛选） |
+| POST | `/api/clear-messages` | 清空消息 |
 
-### 网络优化
-- Socket.IO 连接管理
-- 消息节流控制
-- 位置更新批量处理
+### Socket.IO 实时事件
 
-### 前端优化
-- Canvas 渲染优化
-- 虚拟滚动
-- 资源懒加载
+所有业务逻辑通过 Socket.IO 双向通信完成，包括用户注册/会话恢复、位置同步、消息收发、好友系统、私信、管理员操作等。
 
-## 部署建议
+完整 API 文档见 [`docs/API.md`](docs/API.md)。
 
-### 生产环境
-1. 使用反向代理（Nginx）
-2. 配置 SSL/TLS
-3. 设置环境变量
-4. 配置进程管理器（PM2）
+## 部署
 
-### 示例 Nginx 配置
+### Nginx 反向代理
+
 ```nginx
 server {
     listen 80;
     server_name your-domain.com;
-    
+
     location / {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
@@ -400,7 +167,8 @@ server {
 }
 ```
 
-### PM2 配置
+### PM2 进程管理
+
 ```javascript
 // ecosystem.config.js
 module.exports = {
@@ -409,50 +177,24 @@ module.exports = {
     script: './server/index.js',
     instances: 1,
     autorestart: true,
-    watch: false,
     max_memory_restart: '1G',
-    env: {
-      NODE_ENV: 'production',
-      PORT: 3000
-    }
+    env: { NODE_ENV: 'production', PORT: 3000 }
   }]
 };
 ```
 
-## 开发计划
+```bash
+pm2 start ecosystem.config.js
+```
 
-### 已实现功能
-- ✅ 基础聊天功能
-- ✅ 用户系统
-- ✅ 好友系统
-- ✅ 私信功能
-- ✅ 管理员系统
-- ✅ 消息持久化
+## 文档索引
 
-### 计划功能
-- 📝 图片消息
-- 📝 语音消息
-- 📝 群组功能
-- 📝 地图标记
-- 📝 主题切换
-- 📝 移动端适配
-
-## 贡献指南
-
-1. Fork 项目
-2. 创建功能分支
-3. 提交更改
-4. 推送到分支
-5. 创建 Pull Request
+| 文档 | 说明 |
+|------|------|
+| [`README.md`](README.md) | 项目概述、快速开始、操作指南（本文件） |
+| [`docs/API.md`](docs/API.md) | REST API 与 Socket.IO 事件完整参考 |
+| [`docs/DEVELOPER.md`](docs/DEVELOPER.md) | 架构设计、数据流、安全机制、性能优化、调试指南 |
 
 ## 许可证
 
 MIT License
-
-## 联系方式
-
-如有问题或建议，欢迎提交 Issue 或联系开发团队。
-
----
-
-**MeChat** - 连接世界的每一个角落 🌍

@@ -1,739 +1,119 @@
 # MeChat 开发者文档
 
 ## 目录
-1. [架构概览](#架构概览)
-2. [后端架构](#后端架构)
-3. [前端架构](#前端架构)
-4. [数据流](#数据流)
-5. [安全机制](#安全机制)
-6. [性能优化](#性能优化)
-7. [调试指南](#调试指南)
+
+- [架构概览](#架构概览)
+- [后端](#后端)
+- [前端](#前端)
+- [数据流](#数据流)
+- [安全机制](#安全机制)
+- [性能策略](#性能策略)
+- [调试与排错](#调试与排错)
 
 ---
 
 ## 架构概览
 
-### 系统架构图
+MeChat 采用经典的实时 Web 应用架构：Express 提供 HTTP 静态文件服务和 REST API，Socket.IO 处理所有实时双向通信，sql.js 在内存中运行 SQLite 并定时持久化到磁盘。前端是一个单 HTML 文件，内嵌全部 CSS 和 JavaScript，通过 Canvas 2D 渲染开放世界。
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                         客户端                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │   Canvas     │  │  Socket.IO   │  │     UI       │      │
-│  │   渲染层      │  │   通信层      │  │   交互层      │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ WebSocket / HTTP
-┌──────────────────────────▼──────────────────────────────────┐
-│                        服务器                               │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │                   Express Server                      │  │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌───────────┐  │  │
-│  │  │  REST API    │  │  Socket.IO   │  │  Static   │  │  │
-│  │  │   路由       │  │   处理器      │  │   Files   │  │  │
-│  │  └──────────────┘  └──────────────┘  └───────────┘  │  │
-│  └──────────────────────────┬───────────────────────────┘  │
-│                             │                              │
-│  ┌──────────────────────────▼───────────────────────────┐  │
-│  │                  Database Module                      │  │
-│  │              (sql.js - SQLite)                        │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  浏览器 (index.html)                                 │
+│                                                      │
+│  ┌──────────┐  ┌──────────────┐  ┌───────────────┐  │
+│  │ Canvas   │  │ Socket.IO    │  │ UI 层         │  │
+│  │ 渲染引擎  │  │ 客户端        │  │ 毛玻璃组件    │  │
+│  └──────────┘  └──────┬───────┘  └───────────────┘  │
+└───────────────────────┼──────────────────────────────┘
+                        │ WebSocket
+┌───────────────────────┼──────────────────────────────┐
+│  Node.js 服务器        │                              │
+│                       ▼                              │
+│  ┌────────────────────────────────────────────────┐  │
+│  │  Express + Socket.IO                           │  │
+│  │  ┌──────────┐  ┌──────────┐  ┌────────────┐  │  │
+│  │  │ REST API │  │ 事件处理  │  │ 静态文件    │  │  │
+│  │  │ (认证)   │  │ (业务)   │  │ (前端资源)  │  │  │
+│  │  └──────────┘  └────┬─────┘  └────────────┘  │  │
+│  └───────────────────────┼────────────────────────┘  │
+│                          ▼                           │
+│  ┌────────────────────────────────────────────────┐  │
+│  │  database.js (sql.js → SQLite)                 │  │
+│  │  内存数据库 + 2秒延迟写盘                       │  │
+│  └────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────┘
 ```
+
+### 通信分工
+
+| 通道 | 用途 |
+|------|------|
+| HTTP REST | 仅用于账号注册和登录认证 |
+| Socket.IO | 所有实时功能：会话恢复、位置同步、消息收发、好友系统、私信、管理操作 |
+| localStorage | 前端本地持久化 userId、sessionToken、用户颜色 |
 
 ---
 
-## 后端架构
+## 后端
 
-### 1. 服务器入口 (server/index.js)
+### 文件结构
 
-#### 核心模块
+| 文件 | 职责 |
+|------|------|
+| `server/index.js` | Express 服务器创建、中间件配置、REST 路由、Socket.IO 事件处理、在线状态管理 |
+| `server/database.js` | SQLite 初始化与迁移、全部数据 CRUD 操作、定时持久化 |
+
+### 服务器启动流程
+
+```
+startServer()
+  ├── db.initDatabase()          // 初始化 SQLite，创建/迁移表结构
+  ├── 设置站长账号                 // 遍历 SUPER_ADMINS，设为管理员+站长
+  ├── 注册 REST 路由              // /api/health, /register, /login, /users 等
+  ├── io.on('connection', ...)   // 注册全部 Socket 事件处理器
+  ├── setInterval(flushPositions, 5000)  // 每5秒批量写位置到数据库
+  ├── setInterval(cleanupInactiveUsers, 3600000)  // 每小时清理不活跃用户
+  └── server.listen(PORT)
+```
+
+### 在线状态管理
+
+服务器维护四个核心内存数据结构：
 
 ```javascript
-// 主要依赖
-const express = require('express');      // Web 服务器
-const http = require('http');            // HTTP 服务器
-const { Server } = require('socket.io'); // 实时通信
-const cors = require('cors');            // 跨域支持
-const db = require('./database');        // 数据库模块
+const onlineUsers    = new Map();  // socket.id → user 对象
+const userSocketMap  = new Map();  // userId → socket.id
+const blockedCache   = new Map();  // userId → Set<blockedId>
+const positionDirty  = new Set();  // 待写盘的 userId 集合
 ```
 
-#### 服务器配置
+**关键设计决策**：
+
+- **单设备登录**：同一 userId 的新连接会自动断开旧连接（`disconnectOldSocket`）
+- **屏蔽缓存**：`blockedCache` 避免每次广播都查询数据库，屏蔽/取消屏蔽时全量失效
+- **位置批量写盘**：移动事件只更新内存，每 5 秒由 `flushPositions()` 批量写入数据库
+- **断连判断**：`isUserOnlineExcluding()` 确保同一用户多标签页时，关闭一个不会广播离开
+
+### Socket.IO 事件分类
+
+**用户生命周期**：`register` → `move` / `send_message` / ... → `disconnect`
+
+| 阶段 | 事件 | 说明 |
+|------|------|------|
+| 进入 | `register` | 创建或恢复用户，检查封禁状态，发送在线列表和历史消息 |
+| 移动 | `move` | 更新内存位置，广播给非屏蔽用户 |
+| 通讯 | `send_message` | 验证→节流→存储→选择性广播 |
+| 社交 | `send_friend_request` / `accept_friend_request` / `block_user` 等 | 好友和屏蔽操作 |
+| 私信 | `send_private_message` / `get_dm_history` | 仅限好友间的一对一消息 |
+| 管理 | `admin_mute_user` / `admin_ban_user` / `admin_broadcast` 等 | 需要管理员/站长权限 |
+| 离开 | `disconnect` | 保存位置、广播离开、清理映射 |
+
+### 消息广播的屏蔽过滤
+
+发送消息时，服务器需要同时考虑「谁屏蔽了我」和「我屏蔽了谁」：
 
 ```javascript
-const PORT = process.env.PORT || 3000;
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, { 
-    cors: { origin: '*', methods: ['GET', 'POST'] } 
-});
-```
-
-#### 中间件配置
-
-```javascript
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, '..'), {
-    etag: true, 
-    maxAge: '5m',
-    setHeaders: (res, path) => {
-        if (path.endsWith('.png') || path.endsWith('.jpg') || path.endsWith('.ico')) {
-            res.setHeader('Cache-Control', 'public, max-age=300');
-        }
-    }
-}));
-```
-
-### 2. 状态管理
-
-#### 在线用户管理
-
-```javascript
-const onlineUsers = new Map();      // socket.id -> user
-const userSocketMap = new Map();    // userId -> socket.id
-const blockedCache = new Map();     // userId -> Set(blockedIds)
-const positionDirty = new Set();    // 需要保存位置的用户
-```
-
-#### 核心函数
-
-```javascript
-// 获取用户屏蔽列表（带缓存）
-function getBlockedIds(userId) {
-    if (blockedCache.has(userId)) return blockedCache.get(userId);
-    const ids = db.getBlockedUsers(userId);
-    blockedCache.set(userId, ids);
-    return ids;
-}
-
-// 使屏蔽缓存失效
-function invalidateBlockCache(userId) {
-    blockedCache.delete(userId);
-    for (const [id] of onlineUsers) { 
-        blockedCache.delete(id); 
-    }
-}
-
-// 批量刷新位置到数据库
-function flushPositions() {
-    if (positionDirty.size === 0) return;
-    for (const userId of positionDirty) {
-        const user = Array.from(onlineUsers.values()).find(u => u.id === userId);
-        if (user) db.updateUserPosition(userId, user.x, user.y);
-    }
-    positionDirty.clear();
-}
-```
-
-### 3. Socket.IO 事件处理
-
-#### 连接生命周期
-
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   connect   │────▶│  register   │────▶│  connected  │
-└─────────────┘     └─────────────┘     └─────────────┘
-                                               │
-                                               ▼
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│ disconnected│◀────│  cleanup    │◀────│   events    │
-└─────────────┘     └─────────────┘     └─────────────┘
-```
-
-#### 事件处理流程
-
-```javascript
-io.on('connection', (socket) => {
-    let currentUser = null;
-    
-    // 1. 用户注册/登录
-    socket.on('register', (data) => {
-        // 处理用户注册逻辑
-        // 发送 registered 事件
-    });
-    
-    // 2. 位置更新
-    socket.on('move', (data) => {
-        // 更新位置
-        // 广播给其他用户（考虑屏蔽）
-    });
-    
-    // 3. 消息发送
-    socket.on('send_message', (data) => {
-        // 验证用户状态
-        // 检查禁言状态
-        // 频率限制
-        // 保存消息
-        // 广播（考虑好友可见/屏蔽）
-    });
-    
-    // 4. 断开连接
-    socket.on('disconnect', () => {
-        // 保存位置
-        // 通知其他用户
-        // 清理状态
-    });
-});
-```
-
-### 4. 数据库模块 (server/database.js)
-
-#### 数据库初始化
-
-```javascript
-async function initDatabase() {
-    SQL = await initSqlJs();
-    
-    if (fs.existsSync(DB_PATH)) {
-        const buffer = fs.readFileSync(DB_PATH);
-        db = new SQL.Database(buffer);
-    } else {
-        db = new SQL.Database();
-    }
-    
-    // 创建表结构
-    createTables();
-    
-    // 强制保存
-    forceSave();
-}
-```
-
-#### 数据持久化策略
-
-```javascript
-// 标记脏数据
-function markDirty() {
-    dbDirty = true;
-    if (!saveTimer) {
-        saveTimer = setTimeout(() => {
-            flushSave();
-        }, SAVE_INTERVAL);  // 2秒延迟保存
-    }
-}
-
-// 强制保存
-function forceSave() {
-    if (!db) return;
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(DB_PATH, buffer);
-    dbDirty = false;
-}
-```
-
-#### 核心数据操作
-
-```javascript
-// 用户操作
-module.exports = {
-    // 查询
-    getUserById,
-    getUserByUsername,
-    getOnlineUsers,
-    
-    // 创建/更新
-    createUser,
-    updateUser,
-    updateUserPosition,
-    
-    // 认证
-    verifyLogin,
-    registerUser,
-    
-    // 好友
-    addFriend,
-    removeFriend,
-    getFriends,
-    isFriend,
-    
-    // 消息
-    createMessage,
-    getMessages,
-    getRecentMessages,
-    
-    // 管理
-    banUser,
-    unbanUser,
-    muteUser,
-    unmuteUser,
-    setAdmin,
-    setSuperAdmin
-};
-```
-
----
-
-## 前端架构
-
-### 1. 页面结构
-
-```html
-<!DOCTYPE html>
-<html>
-<head>
-    <!-- 样式和字体 -->
-    <link href="https://fonts.googleapis.com/css2?family=...">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/.../font-awesome.min.css">
-</head>
-<body>
-    <!-- 入口界面 -->
-    <div id="entryScreen">...</div>
-    
-    <!-- 游戏画布 -->
-    <canvas id="worldCanvas"></canvas>
-    
-    <!-- UI 层 -->
-    <div class="online-badge">...</div>
-    <div class="user-card">...</div>
-    <div class="coords-display">...</div>
-    <div class="controls-hint">...</div>
-    
-    <!-- 消息输入 -->
-    <div class="message-input-container">...</div>
-    
-    <!-- 对话框 -->
-    <div class="dialog-overlay">...</div>
-    <div class="modal-overlay">...</div>
-</body>
-</html>
-```
-
-### 2. 核心类设计
-
-#### 应用状态管理
-
-```javascript
-const AppState = {
-    // 用户状态
-    currentUser: null,
-    isAdmin: false,
-    isSuperAdmin: false,
-    
-    // 在线用户
-    onlineUsers: new Map(),
-    
-    // 消息
-    messages: [],
-    privateMessages: new Map(),
-    
-    // 好友
-    friends: [],
-    pendingRequests: [],
-    blockedUsers: new Set(),
-    
-    // 画布状态
-    camera: { x: 0, y: 0 },
-    viewport: { width: 0, height: 0 },
-    
-    // 输入状态
-    keys: new Set(),
-    mouse: { x: 0, y: 0 },
-    
-    // 消息输入
-    isTyping: false,
-    friendOnlyMode: false
-};
-```
-
-#### 渲染循环
-
-```javascript
-class Renderer {
-    constructor(canvas) {
-        this.canvas = canvas;
-        this.ctx = canvas.getContext('2d');
-        this.lastTime = 0;
-    }
-    
-    start() {
-        const loop = (timestamp) => {
-            const deltaTime = timestamp - this.lastTime;
-            this.lastTime = timestamp;
-            
-            this.update(deltaTime);
-            this.render();
-            
-            requestAnimationFrame(loop);
-        };
-        requestAnimationFrame(loop);
-    }
-    
-    update(deltaTime) {
-        // 更新用户位置
-        // 更新相机位置
-        // 更新动画
-    }
-    
-    render() {
-        // 清空画布
-        // 绘制网格
-        // 绘制消息
-        // 绘制用户
-        // 绘制UI
-    }
-}
-```
-
-### 3. 输入处理
-
-#### 键盘控制
-
-```javascript
-const InputHandler = {
-    init() {
-        window.addEventListener('keydown', (e) => {
-            if (AppState.isTyping) return;
-            
-            switch(e.key) {
-                case 'w': case 'ArrowUp':    // 向上移动
-                case 's': case 'ArrowDown':  // 向下移动
-                case 'a': case 'ArrowLeft':  // 向左移动
-                case 'd': case 'ArrowRight': // 向右移动
-                    AppState.keys.add(e.key);
-                    break;
-                case 'Enter':
-                case 't':
-                    openMessageInput();
-                    break;
-                case 'Escape':
-                    closeMessageInput();
-                    break;
-            }
-        });
-        
-        window.addEventListener('keyup', (e) => {
-            AppState.keys.delete(e.key);
-        });
-    }
-};
-```
-
-#### 鼠标控制
-
-```javascript
-const MouseHandler = {
-    init() {
-        const canvas = document.getElementById('worldCanvas');
-        
-        canvas.addEventListener('click', (e) => {
-            if (AppState.isTyping) return;
-            
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            
-            // 转换到世界坐标
-            const worldX = x - AppState.camera.x;
-            const worldY = y - AppState.camera.y;
-            
-            // 处理点击
-            handleWorldClick(worldX, worldY);
-        });
-        
-        canvas.addEventListener('mousemove', (e) => {
-            // 更新鼠标位置
-        });
-    }
-};
-```
-
-### 4. 网络通信
-
-#### Socket 连接管理
-
-```javascript
-const NetworkManager = {
-    socket: null,
-    
-    connect() {
-        this.socket = io();
-        
-        this.socket.on('connect', () => {
-            console.log('Connected to server');
-        });
-        
-        this.socket.on('registered', (data) => {
-            // 处理注册成功
-        });
-        
-        this.socket.on('new_message', (message) => {
-            // 处理新消息
-        });
-        
-        this.socket.on('user_moved', (data) => {
-            // 更新用户位置
-        });
-        
-        // ... 其他事件处理
-    },
-    
-    // 发送消息
-    sendMessage(content, options = {}) {
-        this.socket.emit('send_message', {
-            content,
-            x: AppState.currentUser.x,
-            y: AppState.currentUser.y,
-            friendOnly: options.friendOnly || false
-        });
-    },
-    
-    // 移动
-    move(x, y) {
-        this.socket.emit('move', { x, y });
-    }
-};
-```
-
----
-
-## 数据流
-
-### 1. 用户注册流程
-
-```
-┌─────────┐     register      ┌─────────┐     createUser      ┌─────────┐
-│  Client │ ─────────────────▶ │ Server  │ ─────────────────▶ │   DB    │
-└─────────┘                    └─────────┘                    └─────────┘
-     │                              │                              │
-     │                              │ ◀────────────────────────────┘
-     │                              │    user created
-     │ ◀────────────────────────────┘
-     │    registered event
-     │    { user, onlineUsers, messages }
-     ▼
-┌─────────┐
-│  Render │
-└─────────┘
-```
-
-### 2. 消息发送流程
-
-```
-┌─────────┐    send_message    ┌─────────┐    createMessage    ┌─────────┐
-│  Client │ ─────────────────▶ │ Server  │ ─────────────────▶ │   DB    │
-└─────────┘                    └─────────┘                    └─────────┘
-                                      │
-                                      │ getBlockedIds
-                                      ▼
-                               ┌─────────────┐
-                               │ Filter Users │
-                               │ (blocked)   │
-                               └─────────────┘
-                                      │
-                                      │ new_message
-                                      ▼
-                               ┌─────────────┐
-                               │  Broadcast  │
-                               │  to others  │
-                               └─────────────┘
-```
-
-### 3. 位置同步流程
-
-```
-┌─────────┐      move         ┌─────────┐   update position   ┌─────────┐
-│  Client │ ─────────────────▶ │ Server  │ ─────────────────▶ │  State  │
-└─────────┘                    └─────────┘                    └─────────┘
-                                      │
-                                      │ user_moved
-                                      ▼
-                               ┌─────────────┐
-                               │  Broadcast  │
-                               │ (non-blocked)│
-                               └─────────────┘
-                                      │
-                                      ▼
-                               ┌─────────────┐
-                               │ 5s interval │
-                               │ flush to DB │
-                               └─────────────┘
-```
-
----
-
-## 安全机制
-
-### 1. 认证安全
-
-#### 密码哈希
-
-```javascript
-function hashPassword(password) {
-    return crypto
-        .createHash('sha256')
-        .update('mechat_salt_' + password)
-        .digest('hex');
-}
-```
-
-#### 登录验证
-
-```javascript
-function verifyLogin(username, password) {
-    const user = getUserByUsername(username);
-    if (!user) return { success: false, error: '用户不存在' };
-    if (!user.password_hash) return { 
-        success: false, 
-        error: '该账号未设置密码，请使用游客模式' 
-    };
-    if (user.password_hash !== hashPassword(password)) {
-        return { success: false, error: '密码错误' };
-    }
-    return { success: true, user };
-}
-```
-
-### 2. 权限控制
-
-#### 管理员验证
-
-```javascript
-socket.on('admin_delete_message', (data) => {
-    // 1. 检查是否已登录
-    if (!currentUser) { 
-        socket.emit('error', { message: '无权限' }); 
-        return; 
-    }
-    
-    // 2. 检查管理员权限
-    if (!currentUser.isAdmin) { 
-        socket.emit('error', { message: '无权限' }); 
-        return; 
-    }
-    
-    // 3. 验证管理员密钥
-    if (data.key !== ADMIN_KEY) { 
-        socket.emit('admin_result', { 
-            success: false, 
-            action: 'delete_message', 
-            error: '密钥错误' 
-        }); 
-        return; 
-    }
-    
-    // 4. 执行操作
-    db.deleteMessage(data.messageId);
-    // ...
-});
-```
-
-### 3. 频率限制
-
-#### 消息节流
-
-```javascript
-socket.on('send_message', (data) => {
-    const now = Date.now();
-    if (socket.lastMessageTime && now - socket.lastMessageTime < 1000) {
-        socket.emit('error', { message: '发送太频繁，请稍后再试' });
-        return;
-    }
-    socket.lastMessageTime = now;
-    // ...
-});
-```
-
-### 4. 输入验证
-
-```javascript
-socket.on('send_message', (data) => {
-    // 内容验证
-    if (!data.content || typeof data.content !== 'string') {
-        socket.emit('error', { message: '消息内容不能为空' });
-        return;
-    }
-    
-    // 长度限制
-    if (data.content.length > 500) {
-        socket.emit('error', { message: '消息内容过长（最多500字符）' });
-        return;
-    }
-    
-    // 位置验证
-    const msgX = typeof data.x === 'number' && isFinite(data.x) ? data.x : currentUser.x;
-    const msgY = typeof data.y === 'number' && isFinite(data.y) ? data.y : currentUser.y;
-    // ...
-});
-```
-
----
-
-## 性能优化
-
-### 1. 数据库优化
-
-#### 批量写入
-
-```javascript
-// 使用脏标记 + 定时保存
-let dbDirty = false;
-let saveTimer = null;
-const SAVE_INTERVAL = 2000;
-
-function markDirty() {
-    dbDirty = true;
-    if (!saveTimer) {
-        saveTimer = setTimeout(() => {
-            flushSave();
-        }, SAVE_INTERVAL);
-    }
-}
-```
-
-#### 位置批量保存
-
-```javascript
-const positionDirty = new Set();
-
-// 标记需要保存的位置
-socket.on('move', (data) => {
-    currentUser.x = data.x;
-    currentUser.y = data.y;
-    positionDirty.add(currentUser.id);
-});
-
-// 每5秒批量保存
-setInterval(() => {
-    flushPositions();
-}, 5000);
-```
-
-### 2. 网络优化
-
-#### 屏蔽列表缓存
-
-```javascript
-const blockedCache = new Map();
-
-function getBlockedIds(userId) {
-    if (blockedCache.has(userId)) return blockedCache.get(userId);
-    const ids = db.getBlockedUsers(userId);
-    blockedCache.set(userId, ids);
-    return ids;
-}
-
-function invalidateBlockCache(userId) {
-    blockedCache.delete(userId);
-    // 清除所有相关缓存
-    for (const [id] of onlineUsers) { 
-        blockedCache.delete(id); 
-    }
-}
-```
-
-#### 选择性广播
-
-```javascript
-function filterUsersForClient(clientUserId) {
-    const blockedIds = getBlockedIds(clientUserId);
-    return Array.from(onlineUsers.values())
-        .filter(u => u.id !== clientUserId && !blockedIds.has(u.id));
-}
-
-// 只发送给非屏蔽用户
+// 1. 找出屏蔽了我的用户（我不应发给他们）
 const blockedSockets = [];
 for (const [sid, otherUser] of onlineUsers.entries()) {
     if (getBlockedIds(otherUser.id).has(currentUser.id)) {
@@ -741,268 +121,299 @@ for (const [sid, otherUser] of onlineUsers.entries()) {
     }
 }
 
-const sendTargets = Array.from(io.sockets.sockets.keys())
-    .filter(sid => !blockedSockets.includes(sid));
+// 2. 好友专属消息只发给好友
+if (message.friendOnly) {
+    sendTargets = onlineUsers 中非屏蔽 + 是好友的 socket
+} else {
+    sendTargets = 所有非屏蔽的 socket
+}
 ```
 
-### 3. 前端优化
+### 数据库持久化策略
 
-#### Canvas 渲染优化
+```
+写入操作 → markDirty() → 2秒延迟 → flushSave() → 写入 data/mechat.db
+                                    ↑
+                          期间如有新写入则重置计时器
+```
+
+- `markDirty()`：设置脏标记，启动 2 秒定时器
+- `flushSave()`：导出内存数据库为 Buffer，同步写入文件
+- `forceSave()`：立即写入（用于初始化和关闭时）
+- 位置数据单独处理：`positionDirty` 集合 + 5 秒间隔批量写盘
+
+---
+
+## 前端
+
+### 文件结构
+
+整个前端是一个 `index.html` 文件（约 3900 行），分为三大区域：
+
+| 行范围 | 内容 |
+|--------|------|
+| 1 ~ 1600 | CSS 样式（设计令牌、组件样式、动画、响应式） |
+| 1600 ~ 2300 | HTML 结构（入口界面、Canvas、HUD、面板、对话框） |
+| 2300 ~ 3891 | JavaScript（状态管理、认证、Socket 通信、渲染引擎、输入处理） |
+
+### 设计系统
+
+采用 Apple 风格毛玻璃（Glassmorphism）设计语言：
+
+```css
+:root {
+    --glass-bg:       rgba(255, 255, 255, 0.62);
+    --glass-border:   rgba(255, 255, 255, 0.48);
+    --primary:        #007aff;        /* iOS 蓝 */
+    --accent-red:     #ff3b30;
+    --accent-green:   #30d158;
+    --radius-xl:      22px;
+    --radius-lg:      16px;
+    --radius-md:      12px;
+}
+```
+
+核心视觉效果：
+- `backdrop-filter: blur(40px) saturate(180%)` 实现毛玻璃
+- SVG `feDisplacementMap` 滤镜实现液态玻璃折射（`LiquidGlass` 模块）
+- CSS 动画：`cardEnter`（弹入）、`fadeIn`（淡入）、`dmSlideIn`（滑入）
+
+### JavaScript 模块划分
+
+虽然代码在同一个文件中，但逻辑上分为以下模块：
+
+| 模块 | 行范围 | 职责 |
+|------|--------|------|
+| `MobileAdapter` | 1607-1898 | 设备检测、触摸事件、移动模式切换 |
+| `ResponsiveLayout` | 1902-2075 | 基于 vw/vh/vmin 的动态布局计算 |
+| `JoystickController` | 2079-2233 | 虚拟摇杆 Canvas 绘制与触摸输入 |
+| `LiquidGlass` | 2240-2293 | SDF 位移贴图生成，液态玻璃滤镜 |
+| 状态管理 | 2299-2310 | `state` 全局对象 |
+| 认证系统 | 2349-2441 | 登录/注册/游客进入/会话恢复 |
+| Socket 通信 | 2441-3320 | 全部 Socket.IO 事件监听与发送 |
+| 输入处理 | 3321-3428 | 键盘/鼠标/触摸事件 |
+| 渲染引擎 | 3429-3891 | Canvas 游戏循环、网格/消息/用户渲染 |
+
+### 渲染引擎
+
+游戏循环由 `requestAnimationFrame` 驱动：
+
+```
+gameLoop(timestamp)
+  ├── updatePosition()     // 根据按键/摇杆计算新位置
+  │     ├── 桌面：WASD/方向键，速度 3px/帧
+  │     └── 移动：虚拟摇杆归一化向量，速度 3px/帧
+  ├── socket.emit('move')  // 双重节流：50ms 时间 + 0.15 距离阈值
+  ├── render()             // Canvas 绘制
+  │     ├── renderGrid()       // 点阵网格（视差 0.65，点大小随距离衰减）
+  │     ├── renderMessages()   // 消息气泡（视口裁剪，最多 100/50 条）
+  │     ├── renderOtherUsers() // 其他用户（距离自适应大小，好友光环）
+  │     └── renderCurrentUser() // 当前用户（十字准星）
+  └── updateCoordsDisplay() // 80ms 节流更新坐标文字
+```
+
+**消息气泡渲染细节**：
+- 带作者颜色的半透明背景 + 阴影
+- 管理员消息：橙色背景 + 左侧橙色边框
+- 高光渐变叠加模拟玻璃质感
+- 长消息（>50 字符或 >2 行）截断显示，提示「点击查看全文」
+- `msgMeasureCache` 缓存气泡尺寸避免重复计算
+
+**用户渲染细节**：
+- 距离自适应大小（近大远小）
+- 好友：外圈光环 + 名称后加星号
+- 管理员/站长：名称后加标签
+- 头像：优先显示上传图片（圆形裁切），否则显示颜色圆圈 + 首字母
+- `userAvatars` Map 缓存已加载的头像 Image 对象
+
+### 移动端适配
+
+三个专用模块协作完成移动端支持：
+
+1. **MobileAdapter**：检测设备类型，启用移动模式，绑定触摸事件
+2. **ResponsiveLayout**：基于视口百分比动态计算所有 UI 元素位置和尺寸
+3. **JoystickController**：Canvas 绘制虚拟摇杆，输出归一化方向向量（含 0.15 死区）
+
+响应式断点：`@media (max-width: 768px)`，面板全屏化、按钮紧凑化。
+
+### 会话持久化
+
+前端通过 localStorage 存储三个值，实现关闭浏览器后自动恢复会话：
 
 ```javascript
-class Renderer {
-    render() {
-        // 1. 只渲染视口内的内容
-        const visibleBounds = this.getVisibleBounds();
-        
-        // 2. 批量绘制
-        this.ctx.save();
-        
-        // 3. 使用离屏渲染（如果需要）
-        // this.offscreenCtx.drawImage(...);
-        
-        // 4. 绘制可见消息
-        this.messages
-            .filter(m => this.isInViewport(m, visibleBounds))
-            .forEach(m => this.drawMessage(m));
-        
-        // 5. 绘制可见用户
-        this.onlineUsers
-            .filter(u => this.isInViewport(u, visibleBounds))
-            .forEach(u => this.drawUser(u));
-        
-        this.ctx.restore();
-    }
-}
+localStorage.setItem('mechat_user_id', userId);
+localStorage.setItem('mechat_session_token', sessionToken);
+localStorage.setItem('mechat_user_color', color);
+```
+
+重新打开页面时，`register` 事件携带 `userId` 和 `sessionToken`，服务器识别为老用户并恢复数据。
+
+---
+
+## 数据流
+
+### 用户进入
+
+```
+浏览器打开页面
+  → 读取 localStorage 中的 userId
+  → socket.connect()
+  → socket.emit('register', { userId, nickname, avatar, color })
+  → 服务器：查找/创建用户 → 检查封禁 → 返回 { user, onlineUsers, recentMessages }
+  → 前端：初始化 state → 开始渲染循环
+```
+
+### 发送世界消息
+
+```
+用户按 Enter → 输入内容 → 按 Enter 发送
+  → socket.emit('send_message', { content, x, y, friendOnly })
+  → 服务器：
+      1. 检查登录状态
+      2. 检查禁言状态
+      3. 验证内容（非空、≤500字符）
+      4. 频率限制（1秒间隔）
+      5. 写入数据库
+      6. 计算屏蔽列表，选择性广播
+  → 其他客户端收到 'new_message' → 添加到 messages 数组 → Canvas 渲染
+```
+
+### 位置同步
+
+```
+用户按住 WASD
+  → 每帧计算新位置
+  → 双重节流（50ms + 0.15距离）
+  → socket.emit('move', { x, y })
+  → 服务器：更新内存 → 广播 'user_moved' 给非屏蔽用户
+  → 其他客户端：更新 otherUsers 中对应位置 → Canvas 重绘
+  → 服务器每5秒：flushPositions() 批量写数据库
 ```
 
 ---
 
-## 调试指南
+## 安全机制
 
-### 1. 服务器调试
+### 密码存储
 
-#### 启动调试模式
+```javascript
+// SHA256 + 固定盐值
+crypto.createHash('sha256').update('mechat_salt_' + password).digest('hex');
+```
+
+### 权限层级
+
+| 角色 | 权限 |
+|------|------|
+| 普通用户 | 发消息、加好友、私信 |
+| 管理员 (is_admin) | 禁言/踢出/封禁/解封、删除消息（需密钥）、广播、清空消息、清理数据 |
+| 站长 (is_super_admin) | 管理员全部权限 + 任命/撤销管理员、编辑用户信息 |
+
+### 输入验证
+
+- 消息内容：非空检查、500 字符上限、类型检查
+- 位置数据：`typeof === 'number'` + `isFinite()` 检查
+- 用户名：≥2 字符；密码：≥4 字符
+- 管理员密钥：删除消息等敏感操作需验证 `ADMIN_KEY`
+
+### 频率限制
+
+- 消息发送：1 秒最小间隔（`socket.lastMessageTime`）
+- 位置同步：50ms 时间节流 + 0.15 距离阈值
+
+---
+
+## 性能策略
+
+### 数据库层
+
+| 策略 | 实现 |
+|------|------|
+| 内存数据库 | sql.js 全部操作在内存中，避免磁盘 I/O |
+| 延迟写盘 | 脏标记 + 2 秒防抖，合并短时间内的多次写入 |
+| 位置批量写 | 独立的 5 秒间隔，避免频繁的位置更新触发写盘 |
+| 自动清理 | 每小时清理不活跃用户和过期数据 |
+
+### 网络层
+
+| 策略 | 实现 |
+|------|------|
+| 屏蔽缓存 | `blockedCache` Map，避免每次广播查库 |
+| 选择性广播 | 计算非屏蔽 socket 列表，只发给目标用户 |
+| 位置节流 | 客户端双重节流（50ms + 0.15 距离） |
+| 单设备登录 | 新连接自动踢旧连接，避免重复资源消耗 |
+
+### 渲染层
+
+| 策略 | 实现 |
+|------|------|
+| 视口裁剪 | 只渲染可见区域内的消息和用户 |
+| 消息数量限制 | PC 最多 100 条、移动端 50 条 |
+| 总消息上限 | 5000 条，超出后删除最旧的 |
+| 头像缓存 | `userAvatars` Map 避免重复加载 Image |
+| 气泡尺寸缓存 | `msgMeasureCache` Map 避免重复测量文本 |
+| 坐标显示节流 | 80ms 间隔更新 DOM 文字 |
+
+---
+
+## 调试与排错
+
+### 启动调试
 
 ```bash
-# 使用 nodemon 自动重启
-npm install -g nodemon
-nodemon server/index.js
-
-# 或使用 Node.js 调试器
+# 使用 Node.js 内置调试器
 node --inspect server/index.js
+
+# 使用 nodemon 自动重启（开发推荐）
+npx nodemon server/index.js
 ```
 
-#### 日志输出
+### 常见问题
+
+**问题：用户反馈看不到其他人的消息**
+
+排查步骤：
+1. 检查是否误屏蔽了对方 → 查看数据库 `blocks` 表
+2. 检查消息是否为好友专属 → `friendOnly` 字段
+3. 检查 Socket 连接是否正常 → 浏览器开发者工具 Network → WS 标签页
+
+**问题：数据库文件损坏**
+
+sql.js 在启动时从文件加载数据库，如果文件损坏会导致初始化失败。解决方法：
+1. 备份 `data/mechat.db`
+2. 删除 `data/mechat.db`，重启服务器会自动创建新数据库
+
+**问题：移动端无法移动**
+
+1. 检查 `MobileAdapter` 是否正确检测到移动设备
+2. 在浏览器控制台执行 `state.movementDisabled` 检查移动是否被禁用
+3. 检查虚拟摇杆 Canvas 是否被其他元素遮挡
+
+### 前端调试技巧
 
 ```javascript
-// 在关键位置添加日志
-console.log('用户加入:', user.nickname, '(ID:', user.id + ')');
-console.log('消息发送:', message.content.substring(0, 50));
-console.log('位置更新:', userId, '->', x, y);
+// 浏览器控制台查看应用状态
+console.log(state);              // 当前用户和视口状态
+console.log(state.otherUsers);   // 在线用户列表
+console.log(state.messages.length); // 消息数量
 
-// 使用 debug 模块
-const debug = require('debug')('mechat:server');
-debug('connection from %s', socket.id);
-```
-
-### 2. 数据库调试
-
-#### 查看数据库内容
-
-```javascript
-// 在控制台执行
-const db = require('./server/database');
-
-// 查看所有用户
-console.log(db.getAllUsersInfo());
-
-// 查看消息
-console.log(db.getMessages({ limit: 10 }));
-
-// 查看在线用户
-console.log(db.getOnlineUsers());
-```
-
-### 3. 前端调试
-
-#### 浏览器控制台
-
-```javascript
-// 查看应用状态
-console.log(AppState);
-
-// 查看在线用户
-console.log(AppState.onlineUsers);
-
-// 测试发送消息
-NetworkManager.sendMessage('测试消息');
-
-// 测试移动
-NetworkManager.move(100, 200);
-```
-
-#### 网络监控
-
-```javascript
-// 监控所有 Socket 事件
-const originalEmit = socket.emit;
-socket.emit = function(...args) {
-    console.log('Socket emit:', args);
-    return originalEmit.apply(this, args);
-};
-
+// 监控全部 Socket 事件
 socket.onAny((eventName, ...args) => {
-    console.log('Socket receive:', eventName, args);
+    console.log('[Socket]', eventName, args);
 });
 ```
 
-### 4. 常见问题排查
-
-#### 连接问题
+### 后端调试技巧
 
 ```javascript
-// 检查连接状态
-socket.on('connect_error', (error) => {
-    console.error('连接错误:', error);
+// 在 server/index.js 中添加日志
+socket.on('send_message', (data) => {
+    console.log('[MSG]', currentUser.nickname, ':', data.content?.substring(0, 50));
 });
 
-socket.on('disconnect', (reason) => {
-    console.log('断开连接:', reason);
-});
+// 查看数据库内容（在服务器运行时）
+// 连接后执行
+const db = require('./database');
+console.log(db.getAllUsersInfo());
+console.log(db.getMessages({ limit: 5 }));
 ```
-
-#### 性能问题
-
-```javascript
-// 监控帧率
-let frameCount = 0;
-let lastTime = performance.now();
-
-function checkFPS() {
-    frameCount++;
-    const now = performance.now();
-    if (now - lastTime >= 1000) {
-        console.log('FPS:', frameCount);
-        frameCount = 0;
-        lastTime = now;
-    }
-    requestAnimationFrame(checkFPS);
-}
-```
-
----
-
-## 扩展开发
-
-### 1. 添加新功能
-
-#### 示例：添加表情功能
-
-**后端修改 (server/index.js)**
-
-```javascript
-socket.on('send_emoji', (data) => {
-    if (!currentUser) return;
-    if (db.isMuted(currentUser.id)) return;
-    
-    const emoji = {
-        id: db.generateId(),
-        x: data.x,
-        y: data.y,
-        emoji: data.emoji,
-        authorId: currentUser.id,
-        timestamp: Date.now()
-    };
-    
-    // 广播给所有用户
-    io.emit('new_emoji', emoji);
-});
-```
-
-**前端修改 (index.html)**
-
-```javascript
-// 添加表情选择器
-function showEmojiPicker() {
-    // 显示表情选择界面
-}
-
-// 发送表情
-function sendEmoji(emoji) {
-    socket.emit('send_emoji', {
-        x: AppState.currentUser.x,
-        y: AppState.currentUser.y,
-        emoji: emoji
-    });
-}
-
-// 接收表情
-socket.on('new_emoji', (data) => {
-    // 在画布上显示表情动画
-});
-```
-
-### 2. 数据库迁移
-
-#### 添加新表
-
-```javascript
-// 在 initDatabase 函数中添加
-db.run(`
-    CREATE TABLE IF NOT EXISTS new_table (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        data TEXT,
-        created_at INTEGER
-    )
-`);
-
-// 添加新列（使用 try-catch 避免重复添加）
-try { 
-    db.run(`ALTER TABLE users ADD COLUMN new_field TEXT DEFAULT ''`); 
-} catch(e) {}
-```
-
----
-
-## 附录
-
-### 代码规范
-
-1. **命名规范**
-   - 变量：camelCase
-   - 常量：UPPER_SNAKE_CASE
-   - 函数：camelCase
-   - 类：PascalCase
-
-2. **注释规范**
-   ```javascript
-   /**
-    * 函数描述
-    * @param {string} param1 - 参数说明
-    * @returns {boolean} 返回值说明
-    */
-   function example(param1) {
-       // 单行注释
-       return true;
-   }
-   ```
-
-3. **错误处理**
-   ```javascript
-   try {
-       // 可能出错的代码
-   } catch (error) {
-       console.error('操作失败:', error);
-       // 适当的错误处理
-   }
-   ```
-
-### 版本历史
-
-- v1.0.0 - 初始版本
-  - 基础聊天功能
-  - 用户系统
-  - 好友系统
-  - 管理员功能

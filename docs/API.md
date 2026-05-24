@@ -1,215 +1,115 @@
 # MeChat API 文档
 
-## 目录
-1. [REST API](#rest-api)
-2. [Socket.IO 事件](#socketio-事件)
-3. [数据类型](#数据类型)
-4. [错误处理](#错误处理)
-5. [示例代码](#示例代码)
+## 概览
+
+MeChat 的通信分为两个通道：
+
+- **HTTP REST API**：仅用于账号注册和登录（7 个端点）
+- **Socket.IO 实时事件**：所有业务逻辑（30+ 客户端事件、25+ 服务器事件）
+
+基础 URL：`http://localhost:3000`
 
 ---
 
 ## REST API
 
-### 基础信息
+### POST /api/register
 
-- **基础 URL**: `http://localhost:3000/api`
-- **Content-Type**: `application/json`
+用户注册。
 
-### 端点列表
+**请求体**：
 
-#### 1. 健康检查
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| username | string | 是 | 用户名，≥2 字符 |
+| password | string | 是 | 密码，≥4 字符 |
+| nickname | string | 否 | 昵称，默认同 username |
+| color | string | 否 | 主题色，默认随机 |
 
-```http
-GET /api/health
-```
+**响应** `200`：
 
-**响应**:
 ```json
-{
-    "status": "ok",
-    "timestamp": 1704067200000
-}
+{ "success": true, "id": "id_...", "user": { "id": "...", "username": "...", "nickname": "...", ... } }
 ```
 
-#### 2. 用户注册
+**错误响应** `400`：
 
-```http
-POST /api/register
-```
-
-**请求体**:
 ```json
-{
-    "username": "string",      // 必填，至少2个字符
-    "password": "string",      // 必填，至少4个字符
-    "nickname": "string",      // 可选，默认使用用户名
-    "color": "#hexcolor"       // 可选，默认随机颜色
-}
+{ "success": false, "error": "用户名已存在" }
 ```
 
-**成功响应**:
+### POST /api/login
+
+用户登录。
+
+**请求体**：
+
+| 字段 | 类型 | 必填 |
+|------|------|------|
+| username | string | 是 |
+| password | string | 是 |
+
+**响应** `200`：
+
 ```json
-{
-    "success": true,
-    "id": "id_1704067200000_abc123",
-    "user": {
-        "id": "id_1704067200000_abc123",
-        "username": "testuser",
-        "nickname": "测试用户",
-        "avatar": null,
-        "x": 0,
-        "y": 0,
-        "color": "#6366f1",
-        "bio": ""
-    }
-}
+{ "success": true, "user": { "id": "...", "username": "...", "nickname": "...", ... } }
 ```
 
-**错误响应**:
+**错误响应** `401`：
+
 ```json
-{
-    "success": false,
-    "error": "用户名已存在"
-}
+{ "success": false, "error": "密码错误" }
 ```
 
-#### 3. 用户登录
+### GET /api/health
 
-```http
-POST /api/login
-```
+健康检查。
 
-**请求体**:
+**响应**：
+
 ```json
-{
-    "username": "string",
-    "password": "string"
-}
+{ "status": "ok", "timestamp": 1704067200000 }
 ```
 
-**成功响应**:
+### GET /api/users
+
+获取在线用户列表（5 分钟内活跃）。
+
+**响应**：
+
 ```json
-{
-    "success": true,
-    "user": {
-        "id": "id_1704067200000_abc123",
-        "username": "testuser",
-        "nickname": "测试用户",
-        "avatar": null,
-        "x": 100,
-        "y": 200,
-        "color": "#6366f1",
-        "bio": "",
-        "is_admin": 0,
-        "is_super_admin": 0
-    }
-}
+{ "users": [{ "id": "...", "username": "...", "nickname": "...", "avatar": "...", "x": 0, "y": 0, "color": "#6366f1", "bio": "..." }], "count": 1 }
 ```
 
-**错误响应**:
+### GET /api/user/:id
+
+获取指定用户信息。
+
+**响应** `200`：用户对象
+
+**响应** `404`：`{ "error": "用户不存在" }`
+
+### GET /api/messages
+
+获取消息列表，支持按坐标范围筛选。
+
+**查询参数**：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| limit | number | 100 | 返回数量上限 |
+| x | number | - | 中心 X 坐标（与 y、radius 配合使用） |
+| y | number | - | 中心 Y 坐标 |
+| radius | number | 2000 | 搜索半径 |
+
+### POST /api/clear-messages
+
+清空所有消息。
+
+**响应**：
+
 ```json
-{
-    "success": false,
-    "error": "密码错误"
-}
-```
-
-#### 4. 获取在线用户
-
-```http
-GET /api/users
-```
-
-**响应**:
-```json
-{
-    "users": [
-        {
-            "id": "id_1704067200000_abc123",
-            "username": "user1",
-            "nickname": "用户1",
-            "avatar": null,
-            "x": 100,
-            "y": 200,
-            "color": "#6366f1",
-            "bio": "个人简介"
-        }
-    ],
-    "count": 1
-}
-```
-
-#### 5. 获取用户信息
-
-```http
-GET /api/user/:id
-```
-
-**参数**:
-- `id` - 用户ID
-
-**响应**:
-```json
-{
-    "id": "id_1704067200000_abc123",
-    "username": "user1",
-    "nickname": "用户1",
-    "avatar": null,
-    "x": 100,
-    "y": 200,
-    "color": "#6366f1",
-    "bio": "个人简介",
-    "last_active": 1704067200000,
-    "created_at": 1704067200000
-}
-```
-
-#### 6. 获取消息
-
-```http
-GET /api/messages?limit=100&x=0&y=0&radius=2000
-```
-
-**查询参数**:
-- `limit` - 返回消息数量（默认100，最大500）
-- `x` - 中心X坐标（可选）
-- `y` - 中心Y坐标（可选）
-- `radius` - 搜索半径（默认2000）
-
-**响应**:
-```json
-{
-    "messages": [
-        {
-            "id": "id_1704067200000_msg123",
-            "userId": "id_1704067200000_abc123",
-            "x": 100,
-            "y": 200,
-            "content": "消息内容",
-            "author": "用户1",
-            "authorId": "id_1704067200000_abc123",
-            "authorColor": "#6366f1",
-            "authorIsAdmin": 0,
-            "timestamp": 1704067200000
-        }
-    ],
-    "count": 1
-}
-```
-
-#### 7. 清空消息
-
-```http
-POST /api/clear-messages
-```
-
-**响应**:
-```json
-{
-    "success": true,
-    "message": "已删除 100 条消息"
-}
+{ "success": true, "message": "已删除 100 条消息" }
 ```
 
 ---
@@ -220,828 +120,200 @@ POST /api/clear-messages
 
 ```javascript
 const socket = io('http://localhost:3000');
-
-socket.on('connect', () => {
-    console.log('Connected:', socket.id);
-});
-
-socket.on('connect_error', (error) => {
-    console.error('Connection error:', error);
-});
-
-socket.on('disconnect', (reason) => {
-    console.log('Disconnected:', reason);
-});
 ```
+
+---
 
 ### 客户端 → 服务器
 
-#### 1. 注册用户
-
-```javascript
-socket.emit('register', {
-    userId: 'id_1704067200000_abc123',  // 可选，已有用户ID
-    nickname: '游客123',                  // 可选，默认随机名称
-    avatar: 'data:image/png;base64,...',  // 可选，头像数据
-    color: '#6366f1'                      // 可选，默认随机颜色
-});
-```
-
-**响应事件**: `registered`
-
-#### 2. 更新资料
-
-```javascript
-socket.emit('update_profile', {
-    nickname: '新昵称',
-    avatar: 'data:image/png;base64,...',
-    color: '#ff0000',
-    bio: '新的个人简介'
-});
-```
-
-**响应事件**: `profile_updated`
-
-#### 3. 移动位置
-
-```javascript
-socket.emit('move', {
-    x: 150.5,
-    y: 200.5
-});
-```
-
-**广播事件**: `user_moved`
-
-#### 4. 发送消息
-
-```javascript
-socket.emit('send_message', {
-    content: '消息内容',
-    x: 150,           // 可选，默认当前位置
-    y: 200,           // 可选，默认当前位置
-    friendOnly: false // 可选，仅好友可见
-});
-```
-
-**限制**:
-- 内容长度：1-500字符
-- 发送频率：最小间隔1秒
-
-**广播事件**: `new_message`
-
-#### 5. 发送私信
-
-```javascript
-socket.emit('send_private_message', {
-    targetId: 'id_1704067200000_def456',
-    content: '私信内容'
-});
-```
-
-**限制**:
-- 只能给好友发送私信
-- 禁言用户无法发送
-
-**响应事件**: `private_message_sent`
-
-#### 6. 好友请求
-
-**发送请求**:
-```javascript
-socket.emit('send_friend_request', {
-    targetId: 'id_1704067200000_def456'
-});
-```
-
-**接受请求**:
-```javascript
-socket.emit('accept_friend_request', {
-    fromId: 'id_1704067200000_def456'
-});
-```
-
-**拒绝请求**:
-```javascript
-socket.emit('reject_friend_request', {
-    fromId: 'id_1704067200000_def456'
-});
-```
-
-**删除好友**:
-```javascript
-socket.emit('remove_friend', {
-    targetId: 'id_1704067200000_def456'
-});
-```
-
-**获取好友列表**:
-```javascript
-socket.emit('get_friends');
-```
-
-**响应事件**: `friends_list`
-
-**获取待处理请求**:
-```javascript
-socket.emit('get_pending_requests');
-```
-
-**响应事件**: `pending_requests`
-
-#### 7. 屏蔽用户
-
-**屏蔽**:
-```javascript
-socket.emit('block_user', {
-    targetId: 'id_1704067200000_def456'
-});
-```
-
-**取消屏蔽**:
-```javascript
-socket.emit('unblock_user', {
-    targetId: 'id_1704067200000_def456'
-});
-```
-
-#### 8. 私信历史
-
-**获取历史**:
-```javascript
-socket.emit('get_dm_history', {
-    targetId: 'id_1704067200000_def456'
-});
-```
-
-**响应事件**: `dm_history`
-
-**清空历史**:
-```javascript
-socket.emit('clear_dm_history', {
-    targetId: 'id_1704067200000_def456'
-});
-```
-
-**响应事件**: `dm_cleared`
-
-### 管理员事件
-
-#### 1. 删除消息
-
-```javascript
-socket.emit('admin_delete_message', {
-    key: 'ADMIN_SECRET_KEY',
-    messageId: 'id_1704067200000_msg123'
-});
-```
-
-**广播事件**: `message_deleted`
-
-#### 2. 禁言用户
-
-```javascript
-socket.emit('admin_mute_user', {
-    targetId: 'id_1704067200000_def456',
-    reason: '发布不当内容'
-});
-```
-
-**目标用户事件**: `muted`
-
-#### 3. 解禁用户
-
-```javascript
-socket.emit('admin_unmute_user', {
-    targetId: 'id_1704067200000_def456'
-});
-```
-
-**目标用户事件**: `unmuted`
-
-#### 4. 封禁用户
-
-```javascript
-socket.emit('admin_ban_user', {
-    targetId: 'id_1704067200000_def456',
-    reason: '严重违规'
-});
-```
-
-**目标用户事件**: `banned`
-
-#### 5. 解封用户
-
-```javascript
-socket.emit('admin_unban_user', {
-    targetId: 'id_1704067200000_def456'
-});
-```
-
-#### 6. 踢出用户
-
-```javascript
-socket.emit('admin_kick_user', {
-    targetId: 'id_1704067200000_def456',
-    reason: '被管理员踢出'
-});
-```
-
-**目标用户事件**: `kicked`
-
-#### 7. 系统广播
-
-```javascript
-socket.emit('admin_broadcast', {
-    content: '系统维护通知：服务器将在10分钟后重启'
-});
-```
-
-**广播事件**: `system_broadcast`
-
-#### 8. 清空所有消息
-
-```javascript
-socket.emit('admin_clear_messages', {
-    key: 'ADMIN_SECRET_KEY'
-});
-```
-
-**广播事件**: `messages_cleared`
-
-#### 9. 清理不活跃用户
-
-```javascript
-socket.emit('admin_cleanup', {
-    days: 30  // 清理30天未登录的用户
-});
-```
-
-**响应事件**: `admin_result`
-
-#### 10. 设置管理员
-
-```javascript
-socket.emit('admin_set_admin', {
-    targetId: 'id_1704067200000_def456'
-});
-```
-
-**目标用户事件**: `became_admin`
-
-#### 11. 取消管理员
-
-```javascript
-socket.emit('admin_unset_admin', {
-    targetId: 'id_1704067200000_def456'
-});
-```
-
-**目标用户事件**: `lost_admin`
-
-#### 12. 获取管理列表
-
-```javascript
-socket.emit('admin_get_lists');
-```
-
-**响应事件**: `admin_lists`
-
-#### 13. 获取所有用户
-
-```javascript
-socket.emit('admin_get_all_users');
-```
-
-**响应事件**: `all_users_list`
+#### 用户
+
+| 事件 | 参数 | 说明 |
+|------|------|------|
+| `register` | `{ userId?, nickname?, avatar?, color? }` | 进入世界（新建或恢复会话） |
+| `update_profile` | `{ nickname?, avatar?, color?, bio? }` | 更新个人资料 |
+
+#### 移动
+
+| 事件 | 参数 | 说明 |
+|------|------|------|
+| `move` | `{ x: number, y: number }` | 更新位置（服务端验证数值有效性） |
+
+#### 消息
+
+| 事件 | 参数 | 说明 |
+|------|------|------|
+| `send_message` | `{ content, x?, y?, friendOnly? }` | 发送世界留言。限制：1-500 字符，1 秒间隔 |
+| `admin_delete_message` | `{ key, messageId }` | 删除指定消息（需管理员权限 + 密钥） |
+
+#### 好友
+
+| 事件 | 参数 | 说明 |
+|------|------|------|
+| `send_friend_request` | `{ targetId }` | 发送好友申请 |
+| `accept_friend_request` | `{ fromId }` | 接受好友申请 |
+| `reject_friend_request` | `{ fromId }` | 拒绝好友申请 |
+| `remove_friend` | `{ targetId }` | 删除好友 |
+| `get_friends` | - | 请求好友列表 |
+| `get_pending_requests` | - | 请求待处理的好友申请 |
+
+#### 屏蔽
+
+| 事件 | 参数 | 说明 |
+|------|------|------|
+| `block_user` | `{ targetId }` | 屏蔽用户（同时解除好友关系） |
+| `unblock_user` | `{ targetId }` | 取消屏蔽 |
+
+#### 私信
+
+| 事件 | 参数 | 说明 |
+|------|------|------|
+| `send_private_message` | `{ targetId, content }` | 发送私信（仅限好友） |
+| `get_dm_history` | `{ targetId }` | 获取私信历史（最近 50 条） |
+| `clear_dm_history` | `{ targetId }` | 清空与指定用户的私信记录 |
+
+#### 管理员
+
+| 事件 | 参数 | 权限 | 说明 |
+|------|------|------|------|
+| `admin_mute_user` | `{ targetId, reason? }` | 管理员 | 禁言用户 |
+| `admin_unmute_user` | `{ targetId }` | 管理员 | 解除禁言 |
+| `admin_kick_user` | `{ targetId, reason? }` | 管理员 | 踢出用户（断开连接） |
+| `admin_ban_user` | `{ targetId, reason? }` | 管理员 | 封禁用户（禁止进入） |
+| `admin_unban_user` | `{ targetId }` | 管理员 | 解除封禁 |
+| `admin_broadcast` | `{ content }` | 管理员 | 全服广播 |
+| `admin_clear_messages` | - | 管理员 | 清空所有世界消息 |
+| `admin_cleanup` | `{ days? }` | 管理员 | 清理不活跃数据（默认 30 天） |
+| `admin_get_lists` | - | 管理员 | 获取封禁/禁言列表 |
+| `admin_get_all_users` | - | 管理员 | 获取全部用户列表 |
+| `admin_get_user_info` | `{ targetId }` | 管理员 | 获取用户详情 |
+| `admin_update_user` | `{ targetId, field, value }` | 管理员 | 修改用户信息（仅限 nickname/avatar/color/bio） |
+| `admin_set_admin` | `{ targetId }` | 站长 | 任命管理员 |
+| `admin_unset_admin` | `{ targetId }` | 站长 | 撤销管理员 |
+
+---
 
 ### 服务器 → 客户端
 
-#### 1. 注册成功
+#### 用户状态
 
-```javascript
-socket.on('registered', (data) => {
-    console.log(data);
-    // {
-    //     success: true,
-    //     user: { id, nickname, avatar, x, y, color },
-    //     isAdmin: false,
-    //     isSuperAdmin: false,
-    //     onlineUsers: [...],
-    //     recentMessages: [...]
-    // }
-});
-```
+| 事件 | 数据 | 说明 |
+|------|------|------|
+| `registered` | `{ user, isAdmin, isSuperAdmin, onlineUsers, recentMessages }` | 注册/进入成功 |
+| `user_joined` | `{ user }` | 新用户进入 |
+| `user_left` | `{ userId, nickname }` | 用户离开 |
+| `user_reconnected` | `{ userId, nickname, x, y }` | 用户重连 |
+| `user_moved` | `{ userId, x, y }` | 用户位置更新 |
+| `profile_updated` | `{ user }` | 个人资料更新成功（自己触发） |
+| `user_profile_changed` | `{ userId, changes }` | 其他用户资料变更 |
 
-#### 2. 用户加入
+#### 消息
 
-```javascript
-socket.on('user_joined', (data) => {
-    console.log(data);
-    // { user: { id, nickname, avatar, x, y, color } }
-});
-```
+| 事件 | 数据 | 说明 |
+|------|------|------|
+| `new_message` | `{ id, x, y, content, author, authorId, authorColor, authorIsAdmin, friendOnly, timestamp }` | 新世界消息 |
+| `message_deleted` | `{ messageId, adminName }` | 消息被管理员删除 |
+| `messages_cleared` | `{ adminName }` | 所有消息被清空 |
 
-#### 3. 用户离开
+#### 好友
 
-```javascript
-socket.on('user_left', (data) => {
-    console.log(data);
-    // { userId: 'id_...', nickname: '用户名' }
-});
-```
+| 事件 | 数据 | 说明 |
+|------|------|------|
+| `friend_request` | `{ fromUser: { id, nickname, avatar, color } }` | 收到好友申请 |
+| `friend_accepted` | `{ toUser: { id, nickname, avatar, color } }` | 好友申请被接受 |
+| `friend_result` | `{ targetId?, success, action?, error? }` | 好友操作结果 |
+| `friends_list` | `{ friends: [...] }` | 好友列表 |
+| `pending_requests` | `{ requests: [...] }` | 待处理的好友申请 |
 
-#### 4. 用户移动
+#### 私信
 
-```javascript
-socket.on('user_moved', (data) => {
-    console.log(data);
-    // { userId: 'id_...', x: 150, y: 200 }
-});
-```
+| 事件 | 数据 | 说明 |
+|------|------|------|
+| `private_message` | `{ id, fromId, fromName, fromAvatar, fromColor, toId, content, timestamp }` | 收到私信 |
+| `private_message_sent` | `{ targetId, content, timestamp }` | 私信发送成功确认 |
+| `dm_history` | `{ targetId, messages: [...] }` | 私信历史记录 |
+| `dm_cleared` | `{ targetId }` | 私信被清空 |
 
-#### 5. 新消息
+#### 管理员
 
-```javascript
-socket.on('new_message', (message) => {
-    console.log(message);
-    // {
-    //     id: 'id_...',
-    //     x: 100,
-    //     y: 200,
-    //     content: '消息内容',
-    //     author: '用户名',
-    //     authorId: 'id_...',
-    //     authorColor: '#6366f1',
-    //     authorIsAdmin: 0,
-    //     friendOnly: false,
-    //     timestamp: 1704067200000
-    // }
-});
-```
+| 事件 | 数据 | 说明 |
+|------|------|------|
+| `admin_result` | `{ success, action, targetId?, error? }` | 管理操作结果 |
+| `became_admin` | - | 被任命为管理员 |
+| `lost_admin` | - | 被撤销管理员 |
+| `admin_lists` | `{ banned: [...], muted: [...] }` | 封禁/禁言列表 |
+| `all_users_list` | `{ users: [...] }` | 全部用户列表 |
+| `user_info_detail` | `{ ...userObject }` | 用户详情 |
 
-#### 6. 私信
+#### 系统通知
 
-```javascript
-socket.on('private_message', (message) => {
-    console.log(message);
-    // {
-    //     id: 'id_...',
-    //     fromId: 'id_...',
-    //     fromName: '发送者',
-    //     fromAvatar: '...',
-    //     fromColor: '#6366f1',
-    //     toId: 'id_...',
-    //     content: '私信内容',
-    //     timestamp: 1704067200000
-    // }
-});
-```
+| 事件 | 数据 | 说明 |
+|------|------|------|
+| `system_broadcast` | `{ id, content, fromAdmin, timestamp }` | 全服广播 |
+| `muted` | `{ reason, adminName }` | 被禁言 |
+| `unmuted` | `{}` | 被解除禁言 |
+| `kicked` | `{ reason, adminName }` | 被踢出 |
+| `banned` | `{ reason, adminName }` | 被封禁 |
 
-#### 7. 好友请求
+#### 错误
 
-```javascript
-socket.on('friend_request', (data) => {
-    console.log(data);
-    // { fromUser: { id, nickname, avatar, color } }
-});
-```
+| 事件 | 数据 | 说明 |
+|------|------|------|
+| `error` | `{ message: string }` | 通用错误 |
 
-#### 8. 好友请求被接受
-
-```javascript
-socket.on('friend_accepted', (data) => {
-    console.log(data);
-    // { toUser: { id, nickname, avatar, color } }
-});
-```
-
-#### 9. 好友列表
-
-```javascript
-socket.on('friends_list', (data) => {
-    console.log(data);
-    // { friends: [{ id, username, nickname, avatar, color, bio, last_active }] }
-});
-```
-
-#### 10. 待处理请求
-
-```javascript
-socket.on('pending_requests', (data) => {
-    console.log(data);
-    // { requests: [{ id, username, nickname, avatar, color, requestId }] }
-});
-```
-
-#### 11. 私信历史
-
-```javascript
-socket.on('dm_history', (data) => {
-    console.log(data);
-    // {
-    //     targetId: 'id_...',
-    //     messages: [{ id, from_id, to_id, content, from_name, from_avatar, from_color, timestamp }]
-    // }
-});
-```
-
-#### 12. 资料更新
-
-```javascript
-socket.on('profile_updated', (data) => {
-    console.log(data);
-    // { user: { ... } } 或 { field: 'nickname', value: '新昵称' }
-});
-```
-
-#### 13. 系统广播
-
-```javascript
-socket.on('system_broadcast', (message) => {
-    console.log(message);
-    // {
-    //     id: 'id_...',
-    //     content: '广播内容',
-    //     fromAdmin: '管理员名',
-    //     timestamp: 1704067200000
-    // }
-});
-```
-
-#### 14. 被禁言
-
-```javascript
-socket.on('muted', (data) => {
-    console.log(data);
-    // { reason: '原因', adminName: '管理员名' }
-});
-```
-
-#### 15. 被解禁
-
-```javascript
-socket.on('unmuted', () => {
-    console.log('已被解禁');
-});
-```
-
-#### 16. 被封禁
-
-```javascript
-socket.on('banned', (data) => {
-    console.log(data);
-    // { reason: '原因', adminName: '管理员名' }
-});
-```
-
-#### 17. 被踢出
-
-```javascript
-socket.on('kicked', (data) => {
-    console.log(data);
-    // { reason: '原因', adminName: '管理员名' }
-});
-```
-
-#### 18. 消息被删除
-
-```javascript
-socket.on('message_deleted', (data) => {
-    console.log(data);
-    // { messageId: 'id_...', adminName: '管理员名' }
-});
-```
-
-#### 19. 消息被清空
-
-```javascript
-socket.on('messages_cleared', (data) => {
-    console.log(data);
-    // { adminName: '管理员名' }
-});
-```
-
-#### 20. 成为管理员
-
-```javascript
-socket.on('became_admin', () => {
-    console.log('已成为管理员');
-});
-```
-
-#### 21. 失去管理员
-
-```javascript
-socket.on('lost_admin', () => {
-    console.log('已失去管理员权限');
-});
-```
-
-#### 22. 管理列表
-
-```javascript
-socket.on('admin_lists', (data) => {
-    console.log(data);
-    // {
-    //     banned: [{ user_id, nickname, username, banned_by, reason, created_at }],
-    //     muted: [{ user_id, nickname, username, muted_by, reason, created_at }]
-    // }
-});
-```
-
-#### 23. 所有用户列表
-
-```javascript
-socket.on('all_users_list', (data) => {
-    console.log(data);
-    // { users: [{ id, username, nickname, avatar, color, bio, is_admin, is_super_admin, last_active, created_at }] }
-});
-```
-
-#### 24. 错误消息
-
-```javascript
-socket.on('error', (data) => {
-    console.error(data);
-    // { message: '错误描述' }
-});
-```
-
-#### 25. 管理操作结果
-
-```javascript
-socket.on('admin_result', (data) => {
-    console.log(data);
-    // { success: true, action: 'mute', targetId: 'id_...' }
-    // { success: false, action: 'delete_message', error: '密钥错误' }
-});
-```
+常见错误消息：`请先注册用户`、`您已被禁言，无法发送消息`、`消息内容不能为空`、`消息内容过长（最多500字符）`、`发送太频繁，请稍后再试`、`只能给好友发送私信`、`无权限`、`仅站长可设置管理员`、`您的账号已被封禁`
 
 ---
 
 ## 数据类型
 
-### User 对象
+### User
 
 ```typescript
-interface User {
-    id: string;              // 用户唯一ID
-    username?: string;       // 用户名
-    nickname: string;        // 昵称
-    avatar?: string;         // 头像URL（base64）
-    x: number;               // X坐标
-    y: number;               // Y坐标
-    color: string;           // 主题颜色（#hex）
-    bio?: string;            // 个人简介
-    is_admin?: number;       // 是否管理员（0/1）
-    is_super_admin?: number; // 是否超级管理员（0/1）
-    last_active?: number;    // 最后活跃时间戳
-    created_at?: number;     // 创建时间戳
+{
+    id: string;              // 唯一 ID，格式 "id_时间戳_随机串"
+    username?: string;       // 登录用户名（游客为空）
+    nickname: string;        // 显示昵称
+    avatar?: string;         // 头像（base64 JPEG，128px）
+    x: number;               // 世界 X 坐标
+    y: number;               // 世界 Y 坐标
+    color: string;           // 主题色（#hex）
+    bio?: string;            // 个性签名
+    is_admin?: number;       // 0 或 1
+    is_super_admin?: number; // 0 或 1
+    last_active?: number;    // 最后活跃时间戳（毫秒）
+    created_at?: number;     // 创建时间戳（毫秒）
 }
 ```
 
-### Message 对象
+### Message
 
 ```typescript
-interface Message {
-    id: string;              // 消息ID
-    userId?: string;         // 用户ID
-    x: number;               // X坐标
-    y: number;               // Y坐标
-    content: string;         // 内容
+{
+    id: string;
+    x: number;               // 消息所在 X 坐标
+    y: number;               // 消息所在 Y 坐标
+    content: string;
     author: string;          // 作者昵称
-    authorId: string;        // 作者ID
-    authorColor: string;     // 作者颜色
-    authorIsAdmin?: number;  // 作者是否管理员
-    friendOnly?: boolean;    // 是否仅好友可见
-    timestamp: number;       // 时间戳
+    authorId: string;
+    authorColor: string;
+    authorIsAdmin?: number;
+    friendOnly?: boolean;    // true = 仅好友可见
+    timestamp: number;
 }
 ```
 
-### PrivateMessage 对象
+### PrivateMessage
 
 ```typescript
-interface PrivateMessage {
-    id: string;              // 消息ID
-    fromId: string;          // 发送者ID
-    toId: string;            // 接收者ID
-    content: string;         // 内容
-    fromName: string;        // 发送者昵称
-    fromAvatar?: string;     // 发送者头像
-    fromColor: string;       // 发送者颜色
-    timestamp: number;       // 时间戳
+{
+    id: string;
+    fromId: string;
+    toId: string;
+    content: string;
+    fromName: string;
+    fromAvatar?: string;
+    fromColor: string;
+    timestamp: number;
 }
 ```
-
-### FriendRequest 对象
-
-```typescript
-interface FriendRequest {
-    id: string;              // 请求者ID
-    username?: string;       // 请求者用户名
-    nickname: string;        // 请求者昵称
-    avatar?: string;         // 请求者头像
-    color: string;           // 请求者颜色
-    requestId: string;       // 请求ID（发送者ID）
-}
-```
-
----
-
-## 错误处理
-
-### HTTP 错误码
-
-| 状态码 | 含义 | 场景 |
-|--------|------|------|
-| 200 | 成功 | 请求成功 |
-| 400 | 请求错误 | 参数缺失或无效 |
-| 401 | 未授权 | 登录失败 |
-| 404 | 未找到 | 用户不存在 |
-| 500 | 服务器错误 | 内部错误 |
-
-### Socket 错误
-
-```javascript
-socket.on('error', (data) => {
-    // 常见错误消息：
-    // - '请先注册用户'
-    // - '您已被禁言，无法发送消息'
-    // - '消息内容不能为空'
-    // - '消息内容过长（最多500字符）'
-    // - '发送太频繁，请稍后再试'
-    // - '只能给好友发送私信'
-    // - '无权限'
-});
-```
-
----
-
-## 示例代码
-
-### 完整客户端示例
-
-```javascript
-// 连接服务器
-const socket = io('http://localhost:3000');
-
-// 应用状态
-const state = {
-    currentUser: null,
-    onlineUsers: new Map(),
-    messages: [],
-    friends: [],
-    isAdmin: false
-};
-
-// 连接成功
-socket.on('connect', () => {
-    console.log('Connected to server');
-    
-    // 注册为游客
-    socket.emit('register', {
-        nickname: '游客' + Math.floor(Math.random() * 1000)
-    });
-});
-
-// 注册成功
-socket.on('registered', (data) => {
-    state.currentUser = data.user;
-    state.isAdmin = data.isAdmin;
-    
-    // 更新在线用户
-    data.onlineUsers.forEach(user => {
-        state.onlineUsers.set(user.id, user);
-    });
-    
-    // 加载历史消息
-    state.messages = data.recentMessages;
-    
-    console.log('Registered as:', data.user.nickname);
-});
-
-// 接收新消息
-socket.on('new_message', (message) => {
-    state.messages.push(message);
-    displayMessage(message);
-});
-
-// 用户加入
-socket.on('user_joined', (data) => {
-    state.onlineUsers.set(data.user.id, data.user);
-    console.log('User joined:', data.user.nickname);
-});
-
-// 用户离开
-socket.on('user_left', (data) => {
-    state.onlineUsers.delete(data.userId);
-    console.log('User left:', data.nickname);
-});
-
-// 用户移动
-socket.on('user_moved', (data) => {
-    const user = state.onlineUsers.get(data.userId);
-    if (user) {
-        user.x = data.x;
-        user.y = data.y;
-    }
-});
-
-// 发送消息
-function sendMessage(content) {
-    socket.emit('send_message', {
-        content: content,
-        friendOnly: false
-    });
-}
-
-// 移动位置
-function moveTo(x, y) {
-    socket.emit('move', { x, y });
-}
-
-// 发送好友请求
-function addFriend(userId) {
-    socket.emit('send_friend_request', { targetId: userId });
-}
-
-// 接受好友请求
-function acceptFriend(fromId) {
-    socket.emit('accept_friend_request', { fromId });
-}
-
-// 发送私信
-function sendPrivateMessage(targetId, content) {
-    socket.emit('send_private_message', { targetId, content });
-}
-
-// 接收私信
-socket.on('private_message', (message) => {
-    console.log('Private message from', message.fromName, ':', message.content);
-});
-
-// 错误处理
-socket.on('error', (data) => {
-    console.error('Error:', data.message);
-    alert(data.message);
-});
-
-// 断开连接
-socket.on('disconnect', () => {
-    console.log('Disconnected from server');
-});
-```
-
-### 管理员操作示例
-
-```javascript
-// 删除消息（需要管理员权限）
-function deleteMessage(messageId) {
-    socket.emit('admin_delete_message', {
-        key: 'ADMIN_SECRET_KEY',
-        messageId: messageId
-    });
-}
-
-// 禁言用户
-function muteUser(userId, reason) {
-    socket.emit('admin_mute_user', {
-        targetId: userId,
-        reason: reason
-    });
-}
-
-// 封禁用户
-function banUser(userId, reason) {
-    socket.emit('admin_ban_user', {
-        targetId: userId,
-        reason: reason
-    });
-}
-
-// 系统广播
-function broadcast(content) {
-    socket.emit('admin_broadcast', { content });
-}
-
-// 监听管理操作结果
-socket.on('admin_result', (data) => {
-    if (data.success) {
-        console.log('Admin action success:', data.action);
-    } else {
-        console.error('Admin action failed:', data.error);
-    }
-});
-```
-
----
-
-## 更新日志
-
-### v1.0.0
-- 初始 API 版本
-- 实现基础聊天功能
-- 实现用户系统
-- 实现好友系统
-- 实现管理员功能
