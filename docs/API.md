@@ -190,6 +190,7 @@ const socket = io('http://localhost:3000');
 | `admin_update_user` | `{ targetId, field, value }` | 管理员 | 修改用户信息（仅限 nickname/avatar/color/bio） |
 | `admin_set_admin` | `{ targetId }` | 站长 | 任命管理员 |
 | `admin_unset_admin` | `{ targetId }` | 站长 | 撤销管理员 |
+| `admin_kick_guests` | - | 管理员 | 踢出所有游客账号并删除其数据 |
 
 ---
 

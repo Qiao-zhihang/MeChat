@@ -297,9 +297,11 @@ localStorage.setItem('mechat_user_color', color);
 ### 密码存储
 
 ```javascript
-// SHA256 + 固定盐值
+// SHA256 + 应用特定前缀盐值
 crypto.createHash('sha256').update('mechat_salt_' + password).digest('hex');
 ```
+
+> ⚠️ **安全提示**：当前实现使用 SHA256 + 固定盐值。生产环境建议使用专业的密码哈希库如 bcrypt 或 Argon2。
 
 ### 权限层级
 

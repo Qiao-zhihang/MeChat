@@ -26,16 +26,24 @@
 
 ```
 MeChat/
-├── server/
-│   ├── index.js            # Express 服务器 + Socket.IO 事件处理
-│   └── database.js         # SQLite 数据库操作层
-├── data/
-│   └── mechat.db           # SQLite 数据库文件（自动生成）
-├── public/
-│   └── og-image.png        # 网站图标
+├── .gitattributes          # Git 属性配置
+├── .gitignore              # Git 忽略规则
+├── .env.example            # 环境变量配置示例
+├── LICENSE                 # MIT 开源许可证
+├── README.md               # 项目说明文档
 ├── index.html              # 前端单页应用（内嵌 CSS + JS）
-├── package.json
-└── .gitignore
+├── package.json            # 项目依赖配置
+├── package-lock.json       # 依赖版本锁定
+├── docs/
+│   ├── API.md              # API 完整文档
+│   └── DEVELOPER.md        # 开发者文档
+├── public/
+│   ├── manifest.json       # PWA 配置
+│   ├── og-image.png        # 网站图标
+│   └── sw.js               # Service Worker
+└── server/
+    ├── database.js         # 数据库模块
+    └── index.js            # 服务端主程序
 ```
 
 ## 快速开始
@@ -57,18 +65,24 @@ npm start
 
 ### 环境变量
 
+复制 `.env.example` 为 `.env` 并配置以下变量：
+
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `PORT` | `3000` | 服务器监听端口 |
+| `SUPER_ADMINS` | （无） | 站长用户名，多个用逗号分隔 |
+| `ADMIN_KEY` | （无） | 管理员操作密钥，**必须设置**，否则服务器无法启动 |
+
+> ⚠️ **注意**：`ADMIN_KEY` 是敏感信息，**不要上传到 GitHub**。
 
 ### 管理员与站长
 
-在 `server/index.js` 顶部配置：
+在 `.env` 文件中配置：
 
-```javascript
-const ADMIN_KEY = 'Qiao20100102';           // 管理员操作密钥（删除消息等敏感操作需验证）
-const SUPER_ADMINS = ['Mecat', '千帆栖鸥'];  // 站长用户名（启动时自动设为站长）
-```
+| 变量 | 说明 |
+|------|------|
+| `ADMIN_KEY` | 管理员操作密钥（删除消息等敏感操作需验证）**必须设置** |
+| `SUPER_ADMINS` | 站长用户名（多个用逗号分隔，启动时自动设为站长） |
 
 站长拥有管理员全部权限，额外可任命/撤销管理员、编辑用户信息。
 
@@ -197,4 +211,4 @@ pm2 start ecosystem.config.js
 
 ## 许可证
 
-MIT License
+本项目采用 [MIT License](LICENSE) 开源协议。

@@ -44,11 +44,14 @@ function getRandomColor() { return COLORS[Math.floor(Math.random() * COLORS.leng
 async function startServer() {
     await db.initDatabase();
 
-    const ADMIN_KEY = process.env.ADMIN_KEY || 'Qiao20100102';
-    if (!process.env.ADMIN_KEY) console.log('⚠️  建议通过环境变量 ADMIN_KEY 设置管理员密钥');
+    const ADMIN_KEY = process.env.ADMIN_KEY;
+    if (!ADMIN_KEY) {
+        console.error('❌ 未设置环境变量 ADMIN_KEY，请配置 .env 文件后重启服务器');
+        process.exit(1);
+    }
     
     // 从环境变量读取站长名单，多个用逗号分隔
-    const SUPER_ADMINS = process.env.SUPER_ADMINS?.split(',').map(s => s.trim()).filter(s => s) || ['Mecat', '千帆栖鸥'];
+    const SUPER_ADMINS = process.env.SUPER_ADMINS?.split(',').map(s => s.trim()).filter(s => s) || [];
     console.log(`📋 站长名单: ${SUPER_ADMINS.join(', ')}`);
     for (const name of SUPER_ADMINS) {
         const user = db.getUserByUsername(name);
