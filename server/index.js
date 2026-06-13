@@ -31,6 +31,9 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'index.html'));
 });
+app.get('/intro', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public', 'intro.html'));
+});
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -96,7 +99,9 @@ async function startServer() {
     
     app.get('/api/user/:id', (req, res) => {
         try {
-            const user = db.getUserById(req.params.id);
+            const { id } = req.params;
+            if (!id || !id.startsWith('id_')) return res.status(400).json({ error: '无效的用户ID' });
+            const user = db.getUserById(id);
             if (!user) return res.status(404).json({ error: '用户不存在' });
             res.json(user);
         } catch (error) { res.status(500).json({ error: '获取用户信息失败' }); }
@@ -112,6 +117,8 @@ async function startServer() {
     
     app.post('/api/clear-messages', (req, res) => {
         try {
+            const { key } = req.body;
+            if (!key || key !== ADMIN_KEY) return res.status(403).json({ success: false, error: '无权限' });
             const result = db.clearMessages();
             res.json({ success: true, message: `已删除 ${result} 条消息` });
         } catch (error) { 
@@ -299,7 +306,7 @@ async function startServer() {
                 if (targetSocket) io.to(targetSocket).emit('friend_request', { fromUser: { id: currentUser.id, nickname: currentUser.nickname, avatar: currentUser.avatar, color: currentUser.color } });
                 socket.emit('friend_result', { targetId: data.targetId, success: true, action: 'request_sent' });
             } else {
-                socket.emit('friend_result', { targetId: data.targetId, success: false, error: result.error });
+                socket.emit('friend_result', { targetId: data.targetId, success: false, error: result.error, reverse_request: !!result.reverse_request });
             }
         });
         

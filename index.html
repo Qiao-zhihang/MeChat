@@ -675,6 +675,19 @@
         
         .guest-link:hover { opacity: 1; text-decoration: underline; }
         
+        .project-link {
+            display: inline-block;
+            text-align: center;
+            margin-top: 8px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            opacity: 0.62;
+            transition: opacity 0.2s, color 0.2s;
+        }
+        
+        .project-link:hover { opacity: 1; color: var(--primary); text-decoration: underline; }
+        
         .profile-panel {
             position: fixed;
             top: 0;
@@ -925,15 +938,22 @@
         .context-menu-item:hover { background: rgba(0,0,0,0.05); }
         
         .context-menu-item.danger { color: #ef4444; }
-        
+
         .context-menu-item.danger:hover { background: rgba(239,68,68,0.08); }
+
+        .context-menu-item.accept-action { color: #30d158; font-weight: 600; }
+        .context-menu-item.accept-action:hover { background: rgba(48,209,88,0.1); }
         
         .dm-panel {
             position: fixed;
             bottom: 80px;
             right: 20px;
             width: 320px;
-            max-height: 420px;
+            height: 420px;
+            min-width: 260px;
+            min-height: 300px;
+            max-width: 520px;
+            max-height: 680px;
             background: var(--glass-bg);
             backdrop-filter: url(#lg) blur(30px) saturate(180%);
             -webkit-backdrop-filter: blur(40px) saturate(180%) brightness(1.02);
@@ -945,12 +965,15 @@
             z-index: 200;
             animation: dmSlideIn 0.25s cubic-bezier(0.16,1,0.3,1);
         }
-        
+
+        .dm-panel.dragging { user-select: none; transition: none; }
+        .dm-panel.resizing { transition: none; }
+
         @keyframes dmSlideIn {
             from { opacity: 0; transform: translateY(16px) scale(0.96); }
             to { opacity: 1; transform: translateY(0) scale(1); }
         }
-        
+
         .dm-header {
             display: flex;
             align-items: center;
@@ -960,7 +983,10 @@
             font-weight: 600;
             font-size: 0.88rem;
             color: var(--text);
+            cursor: grab;
+            flex-shrink: 0;
         }
+        .dm-header:active { cursor: grabbing; }
         
         .dm-close-btn {
             background: none; border: none; font-size: 1.4rem; cursor: pointer;
@@ -976,7 +1002,7 @@
         
         .dm-messages {
             flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;
-            min-height: 180px; max-height: 280px;
+            min-height: 0;
         }
         .dm-msg-bubble {
             padding: 8px 13px; border-radius: 14px; max-width: 85%; word-break: break-word;
@@ -1000,6 +1026,37 @@
             transition: transform 0.15s; flex-shrink: 0;
         }
         .dm-send-btn:hover { transform: scale(1.08); }
+
+        .dm-resize-handle {
+            position: absolute;
+            bottom: 4px; right: 4px;
+            width: 16px; height: 16px;
+            cursor: nwse-resize;
+            z-index: 10;
+            opacity: 0.35;
+            transition: opacity 0.2s;
+        }
+        .dm-resize-handle::before,
+        .dm-resize-handle::after {
+            content: '';
+            position: absolute;
+            background: var(--text-tertiary);
+            border-radius: 1px;
+        }
+        .dm-resize-handle::before {
+            width: 10px; height: 2px;
+            bottom: 3px; right: 3px;
+            transform: rotate(-45deg);
+            transform-origin: right bottom;
+        }
+        .dm-resize-handle::after {
+            width: 6px; height: 2px;
+            bottom: 5px; right: 6px;
+            transform: rotate(-45deg);
+            transform-origin: right bottom;
+        }
+        .dm-panel:hover .dm-resize-handle { opacity: 0.5; }
+        .dm-resize-handle:hover { opacity: 0.8 !important; }
 
         .admin-tag {
             display: inline-block; font-size: 0.6rem; padding: 1px 5px;
@@ -1172,10 +1229,15 @@
             .admin-panel,
             .dm-panel {
                 width: 100% !important;
+                height: auto !important;
+                max-height: 60vh !important;
                 left: 0 !important;
                 right: 0 !important;
+                bottom: 0 !important;
                 border-radius: 16px 16px 0 0 !important;
             }
+            .dm-header { cursor: default; }
+            .dm-resize-handle { display: none; }
 
             .context-menu {
                 width: calc(100% - 32px);
@@ -1193,6 +1255,7 @@
                 transform: translate(-50%, -50%) scale(1) !important;
             }
             .broadcast-toast { max-width: calc(100% - 32px); font-size: 0.82rem; }
+            #dm-notification-container { bottom: 90px; right: 12px; width: calc(100vw - 24px); max-width: 300px; }
 
             /* 移动端消息输入框紧凑化 */
             .message-input-wrapper {
@@ -1288,6 +1351,207 @@
         .mobile-action-btn.message-active:active {
             background: linear-gradient(145deg, #0056b3, #004494);
         }
+    
+    /* Toast 通知 */
+    #toast-container {
+        position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+        z-index: 99999; display: flex; flex-direction: column; align-items: center;
+        gap: 8px; pointer-events: none; width: 90%; max-width: 420px;
+    }
+    .toast {
+        pointer-events: auto; width: 100%;
+        padding: 14px 18px; border-radius: 14px;
+        background: rgba(255,255,255,0.88);
+        backdrop-filter: blur(24px) saturate(180%);
+        -webkit-backdrop-filter: blur(24px) saturate(180%);
+        border: 1px solid rgba(255,255,255,0.5);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1), 0 2px 8px rgba(0,0,0,0.04);
+        display: flex; align-items: center; gap: 10px;
+        font-size: 0.88rem; color: #1d1d1f; line-height: 1.4;
+        animation: toastSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        cursor: pointer; transition: opacity 0.3s, transform 0.3s;
+    }
+    .toast.removing {
+        opacity: 0; transform: translateY(-20px) scale(0.95);
+    }
+    @keyframes toastSlideIn {
+        from { opacity: 0; transform: translateY(-30px) scale(0.92); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .toast-icon { font-size: 1.2rem; flex-shrink: 0; width: 24px; text-align: center; }
+    .toast-text { flex: 1; }
+    .toast-success .toast-icon { color: #30d158; }
+    .toast-error .toast-icon { color: #ff453a; }
+    .toast-warning .toast-icon { color: #ff9f0a; }
+    .toast-info .toast-icon { color: #007aff; }
+    .toast-success { border-left: 3px solid #30d158; }
+    .toast-error { border-left: 3px solid #ff453a; }
+    .toast-warning { border-left: 3px solid #ff9f0a; }
+    .toast-info { border-left: 3px solid #007aff; }
+
+    /* 私信通知 */
+    #dm-notification-container {
+        position: fixed; bottom: 100px; right: 20px; z-index: 99998;
+        display: flex; flex-direction: column; gap: 8px;
+        pointer-events: none; width: 300px; max-width: calc(100vw - 40px);
+    }
+    .dm-notification {
+        pointer-events: auto; width: 100%;
+        padding: 12px 14px; border-radius: 16px;
+        background: rgba(255,255,255,0.92);
+        backdrop-filter: blur(30px) saturate(180%);
+        -webkit-backdrop-filter: blur(30px) saturate(180%);
+        border: 1px solid rgba(255,255,255,0.5);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+        display: flex; align-items: center; gap: 10px; cursor: pointer;
+        animation: dmNotifSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        transition: opacity 0.25s, transform 0.25s;
+    }
+    .dm-notification:hover { background: rgba(255,255,255,0.97); }
+    .dm-notification.removing {
+        opacity: 0; transform: translateX(40px) scale(0.95);
+    }
+    @keyframes dmNotifSlideIn {
+        from { opacity: 0; transform: translateX(40px) scale(0.92); }
+        to { opacity: 1; transform: translateX(0) scale(1); }
+    }
+    .dm-notif-avatar {
+        width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        display: flex; align-items: center; justify-content: center;
+        color: white; font-size: 0.85rem; font-weight: 600;
+        overflow: hidden; object-fit: cover;
+    }
+    .dm-notif-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .dm-notif-body { flex: 1; min-width: 0; }
+    .dm-notif-name {
+        font-size: 0.82rem; font-weight: 600; color: var(--text); line-height: 1.3;
+        display: flex; align-items: center; gap: 4px;
+    }
+    .dm-notif-name .dm-notif-badge {
+        font-size: 0.6rem; background: var(--accent-red); color: white;
+        padding: 1px 6px; border-radius: 99px; font-weight: 700;
+    }
+    .dm-notif-preview {
+        font-size: 0.76rem; color: var(--text-secondary); line-height: 1.3;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        margin-top: 2px;
+    }
+    .dm-notif-time { font-size: 0.68rem; color: var(--text-tertiary); flex-shrink: 0; }
+    .dm-notif-close {
+        background: none; border: none; cursor: pointer; color: var(--text-tertiary);
+        font-size: 0.9rem; padding: 2px 4px; flex-shrink: 0; border-radius: 50%;
+        transition: all 0.15s; line-height: 1;
+    }
+    .dm-notif-close:hover { color: var(--text); background: rgba(0,0,0,0.08); }
+
+    /* Confirm 对话框 */
+    #confirm-overlay {
+        position: fixed; inset: 0; z-index: 100000;
+        background: rgba(0,0,0,0.35);
+        display: flex; align-items: center; justify-content: center;
+        padding: 20px; opacity: 0; pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+    #confirm-overlay.active {
+        opacity: 1; pointer-events: auto;
+    }
+    #confirm-box {
+        width: 100%; max-width: 360px;
+        background: rgba(255,255,255,0.92);
+        backdrop-filter: blur(40px) saturate(180%);
+        -webkit-backdrop-filter: blur(40px) saturate(180%);
+        border: 1px solid rgba(255,255,255,0.5);
+        border-radius: 20px;
+        box-shadow: 0 24px 80px rgba(0,0,0,0.15), 0 8px 24px rgba(0,0,0,0.06);
+        padding: 24px 22px 18px;
+        transform: translateY(20px) scale(0.92);
+        transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    #confirm-overlay.active #confirm-box {
+        transform: translateY(0) scale(1);
+    }
+    #confirm-message {
+        font-size: 0.95rem; color: #1d1d1f; line-height: 1.5;
+        margin-bottom: 22px; text-align: center;
+    }
+    #confirm-actions {
+        display: flex; gap: 10px; justify-content: center;
+    }
+    #confirm-actions button {
+        flex: 1; padding: 10px 16px; border: none; border-radius: 12px;
+        font-size: 0.88rem; font-weight: 600; cursor: pointer;
+        transition: all 0.15s; font-family: inherit;
+    }
+    #confirm-cancel {
+        background: rgba(0,0,0,0.06); color: #515154;
+    }
+    #confirm-cancel:hover { background: rgba(0,0,0,0.1); }
+    #confirm-ok {
+        background: #007aff; color: white;
+    }
+    #confirm-ok:hover { background: #0056b3; }
+    #confirm-ok.danger { background: #ff453a; }
+    #confirm-ok.danger:hover { background: #d62d20; }
+
+    #prompt-overlay {
+        position: fixed; inset: 0; z-index: 100000;
+        background: rgba(0,0,0,0.35);
+        display: flex; align-items: center; justify-content: center;
+        padding: 20px; opacity: 0; pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+    #prompt-overlay.active {
+        opacity: 1; pointer-events: auto;
+    }
+    #prompt-box {
+        width: 100%; max-width: 360px;
+        background: rgba(255,255,255,0.92);
+        backdrop-filter: blur(40px) saturate(180%);
+        -webkit-backdrop-filter: blur(40px) saturate(180%);
+        border: 1px solid rgba(255,255,255,0.5);
+        border-radius: 20px;
+        box-shadow: 0 24px 80px rgba(0,0,0,0.15), 0 8px 24px rgba(0,0,0,0.06);
+        padding: 24px 22px 18px;
+        transform: translateY(20px) scale(0.92);
+        transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    #prompt-overlay.active #prompt-box {
+        transform: translateY(0) scale(1);
+    }
+    #prompt-message {
+        font-size: 0.95rem; color: #1d1d1f; line-height: 1.5;
+        margin-bottom: 16px; text-align: center;
+    }
+    #prompt-input {
+        width: 100%; padding: 10px 14px; border: 1px solid rgba(0,0,0,0.08);
+        border-radius: 12px; font-size: 0.9rem; font-family: inherit;
+        outline: none; background: rgba(0,0,0,0.03); color: #1d1d1f;
+        box-sizing: border-box; margin-bottom: 18px;
+        transition: border-color 0.2s ease;
+    }
+    #prompt-input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 4px rgba(0,122,255,0.1);
+    }
+    #prompt-input::placeholder { color: var(--text-tertiary); }
+    #prompt-actions {
+        display: flex; gap: 10px; justify-content: center;
+    }
+    #prompt-actions button {
+        flex: 1; padding: 10px 16px; border: none; border-radius: 12px;
+        font-size: 0.88rem; font-weight: 600; cursor: pointer;
+        transition: all 0.15s; font-family: inherit;
+    }
+    #prompt-cancel {
+        background: rgba(0,0,0,0.06); color: #515154;
+    }
+    #prompt-cancel:hover { background: rgba(0,0,0,0.1); }
+    #prompt-ok {
+        background: #007aff; color: white;
+    }
+    #prompt-ok:hover { background: #0056b3; }
+
     </style>
 </head>
 <body>
@@ -1308,6 +1572,7 @@
         <div class="entry-card">
             <h1 class="title font-orbitron">MeChat</h1>
             <p class="subtitle">探索 · 交流 · 连接</p>
+            <a class="project-link" href="/intro">了解 MeChat 项目介绍</a>
             
             <div class="auth-tabs">
                 <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">登录</button>
@@ -1543,6 +1808,7 @@
             <input type="text" id="dmInput" placeholder="输入私信..." autocomplete="off">
             <button id="dmSendBtn" class="dm-send-btn"><i class="fas fa-paper-plane"></i></button>
         </div>
+        <div class="dm-resize-handle" title="拖拽缩放"></div>
     </div>
 
     <div id="coordinatesDisplay" class="coords-display font-orbitron" style="display:none">
@@ -2302,6 +2568,7 @@
             messages: [],
             viewport: { x: 0, y: 0, scale: 1, width: window.innerWidth, height: window.innerHeight },
             keys: {},
+            velocity: { x: 0, y: 0 },        // 桌面端速度（像素/帧）
             movementDisabled: false,
             isAdmin: false,
             isSuperAdmin: false,
@@ -2350,7 +2617,7 @@
             const btn = $('loginButton');
             const username = $('loginUsername').value.trim();
             const password = $('loginPassword').value;
-            if (!username || !password) { alert('请输入用户名和密码'); return; }
+            if (!username || !password) { showToast('请输入用户名和密码', 'warning'); return; }
             setButtonLoading(btn, true);
             try {
                 const res = await fetch('/api/login', {
@@ -2369,10 +2636,10 @@
                     localStorage.setItem('mechat_user_color', state.user.color);
                     doSocketRegister(state.user.avatar);
                 } else {
-                    alert(data.error || '登录失败');
+                    showToast(data.error || '登录失败', 'error');
                     setButtonLoading(btn, false);
                 }
-            } catch (e) { alert('网络错误，请重试'); setButtonLoading(btn, false); }
+            } catch (e) { showToast('网络错误，请重试', 'error'); setButtonLoading(btn, false); }
         }
         
         async function handleRegister() {
@@ -2380,8 +2647,8 @@
             const username = $('regUsername').value.trim();
             const password = $('regPassword').value;
             const nickname = $('nicknameInput').value.trim() || username;
-            if (!username || username.length < 2) { alert('用户名至少需要2个字符'); return; }
-            if (!password || password.length < 4) { alert('密码至少需要4个字符'); return; }
+            if (!username || username.length < 2) { showToast('用户名至少需要2个字符', 'warning'); return; }
+            if (!password || password.length < 4) { showToast('密码至少需要4个字符', 'warning'); return; }
             setButtonLoading(btn, true);
             try {
                 const res = await fetch('/api/register', {
@@ -2400,10 +2667,10 @@
                     localStorage.setItem('mechat_user_color', state.user.color);
                     doSocketRegister(state.user.avatar);
                 } else {
-                    alert(data.error || '注册失败');
+                    showToast(data.error || '注册失败', 'error');
                     setButtonLoading(btn, false);
                 }
-            } catch (e) { alert('网络错误，请重试'); setButtonLoading(btn, false); }
+            } catch (e) { showToast('网络错误，请重试', 'error'); setButtonLoading(btn, false); }
         }
         
         function handleGuestEnter() {
@@ -2595,7 +2862,7 @@
                     `;
                 }
                 const removeBtn = item.querySelector('.friend-remove-btn');
-                removeBtn.addEventListener('click', (e) => { e.stopPropagation(); if (confirm(`确定移除好友 ${f.nickname} 吗？`)) socket.emit('remove_friend', { targetId: f.id }); });
+                removeBtn.addEventListener('click', async (e) => { e.stopPropagation(); if (await showConfirm(`确定移除好友 ${f.nickname} 吗？`)) socket.emit('remove_friend', { targetId: f.id }); });
                 const teleportBtn = item.querySelector('[data-teleport-id]');
                 if (teleportBtn) teleportBtn.addEventListener('click', (e) => { e.stopPropagation(); state.user.x = onlineUser.x; state.user.y = onlineUser.y; state.viewport.x = onlineUser.x; state.viewport.y = onlineUser.y; socket.emit('move', { x: onlineUser.x, y: onlineUser.y }); });
                 const dmBtn = item.querySelector('[data-dm-id]');
@@ -2659,20 +2926,130 @@
         }
         
         function escapeHtml(str) {
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
         
         function escapeAttr(str) {
             return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
         
+        // ==================== Toast 通知系统 ====================
+        let toastIdCounter = 0;
+        function ensureToastContainer() {
+            let c = document.getElementById('toast-container');
+            if (!c) {
+                c = document.createElement('div');
+                c.id = 'toast-container';
+                document.body.appendChild(c);
+            }
+            return c;
+        }
+        function showToast(text, type, duration) {
+            type = type || 'info';
+            duration = duration || 3500;
+            const container = ensureToastContainer();
+            const id = 'toast-' + (++toastIdCounter);
+            const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+            const el = document.createElement('div');
+            el.id = id;
+            el.className = 'toast toast-' + type;
+            el.innerHTML = '<span class="toast-icon">' + (icons[type] || 'ℹ️') + '</span><span class="toast-text">' + escapeHtml(text) + '</span>';
+            el.addEventListener('click', () => dismissToast(id));
+            container.appendChild(el);
+            setTimeout(() => dismissToast(id), duration);
+        }
+        function dismissToast(id) {
+            const el = document.getElementById(id);
+            if (!el || el.classList.contains('removing')) return;
+            el.classList.add('removing');
+            setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+        }
+
+        // ==================== Confirm 对话框 ====================
+        let confirmResolve = null;
+        function ensureConfirmElements() {
+            if (document.getElementById('confirm-overlay')) return;
+            const overlay = document.createElement('div');
+            overlay.id = 'confirm-overlay';
+            overlay.innerHTML = '<div id="confirm-box"><div id="confirm-message"></div><div id="confirm-actions"><button id="confirm-cancel">取消</button><button id="confirm-ok">确定</button></div></div>';
+            document.body.appendChild(overlay);
+            document.getElementById('confirm-cancel').addEventListener('click', () => { closeConfirm(false); });
+            document.getElementById('confirm-ok').addEventListener('click', () => { closeConfirm(true); });
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) closeConfirm(false); });
+        }
+        function closeConfirm(result) {
+            document.getElementById('confirm-overlay').classList.remove('active');
+            if (confirmResolve) { confirmResolve(result); confirmResolve = null; }
+        }
+        function showConfirm(text, danger) {
+            ensureConfirmElements();
+            const msg = document.getElementById('confirm-message');
+            msg.textContent = text;
+            const okBtn = document.getElementById('confirm-ok');
+            okBtn.className = danger ? 'danger' : '';
+            okBtn.textContent = danger ? '确定' : '确定';
+            document.getElementById('confirm-overlay').classList.add('active');
+            return new Promise(resolve => { confirmResolve = resolve; });
+        }
+
+        // ==================== Prompt 输入对话框 ====================
+        let promptResolve = null;
+        function ensurePromptElements() {
+            if (document.getElementById('prompt-overlay')) return;
+            const overlay = document.createElement('div');
+            overlay.id = 'prompt-overlay';
+            overlay.innerHTML = '<div id="prompt-box"><div id="prompt-message"></div><input type="text" id="prompt-input" autocomplete="off"><div id="prompt-actions"><button id="prompt-cancel">取消</button><button id="prompt-ok">确定</button></div></div>';
+            document.body.appendChild(overlay);
+            document.getElementById('prompt-cancel').addEventListener('click', () => { closePrompt(null); });
+            document.getElementById('prompt-ok').addEventListener('click', () => {
+                closePrompt(document.getElementById('prompt-input').value.trim());
+            });
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) closePrompt(null); });
+            document.getElementById('prompt-input').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); closePrompt(document.getElementById('prompt-input').value.trim()); }
+                if (e.key === 'Escape') { closePrompt(null); }
+            });
+        }
+        function closePrompt(result) {
+            document.getElementById('prompt-overlay').classList.remove('active');
+            if (promptResolve) { promptResolve(result); promptResolve = null; }
+        }
+        function showPrompt(message, placeholder, defaultValue) {
+            ensurePromptElements();
+            document.getElementById('prompt-message').textContent = message;
+            const input = document.getElementById('prompt-input');
+            input.placeholder = placeholder || '';
+            input.value = defaultValue || '';
+            document.getElementById('prompt-overlay').classList.add('active');
+            setTimeout(() => input.focus(), 100);
+            return new Promise(resolve => { promptResolve = resolve; });
+        }
+
         function showContextMenu(x, y, targetUser) {
             contextMenuTarget = targetUser;
             const menu = $('userContextMenu');
             const isFriend = myFriends.some(f => f.id === targetUser.id);
-            menu.querySelector('[data-action="send_friend_request"]').style.display = isFriend ? 'none' : '';
+            const hasPendingFromThem = pendingRequests.some(r => r.id === targetUser.id);
+
+            // 添加好友 / 接受好友 切换
+            const addBtn = menu.querySelector('[data-action="send_friend_request"]');
+            if (isFriend) {
+                addBtn.style.display = 'none';
+                addBtn.textContent = '添加好友';
+                addBtn.dataset.action = 'send_friend_request';
+                addBtn.className = 'context-menu-item';
+            } else if (hasPendingFromThem) {
+                addBtn.style.display = '';
+                addBtn.textContent = '接受好友';
+                addBtn.dataset.action = 'accept_friend_request';
+                addBtn.className = 'context-menu-item accept-action';
+            } else {
+                addBtn.style.display = '';
+                addBtn.textContent = '添加好友';
+                addBtn.dataset.action = 'send_friend_request';
+                addBtn.className = 'context-menu-item';
+            }
+
             menu.querySelector('[data-action="send_private_message"]').style.display = isFriend ? '' : 'none';
             menu.querySelector('[data-action="remove_friend"]').style.display = isFriend ? '' : 'none';
             const adminOnlyEls = menu.querySelectorAll('.admin-only');
@@ -2692,7 +3069,7 @@
             contextMenuTarget = null;
         }
         
-        function handleContextAction(action) {
+        async function handleContextAction(action) {
             if (!contextMenuTarget) return;
             const target = contextMenuTarget;
             hideContextMenu();
@@ -2704,13 +3081,16 @@
                 case 'send_friend_request':
                     socket.emit('send_friend_request', { targetId: target.id });
                     break;
+                case 'accept_friend_request':
+                    socket.emit('accept_friend_request', { fromId: target.id });
+                    break;
                 case 'remove_friend':
-                    if (confirm(`确定移除好友 ${target.name} 吗？`)) {
+                    if (await showConfirm(`确定移除好友 ${target.name} 吗？`)) {
                         socket.emit('remove_friend', { targetId: target.id });
                     }
                     break;
                 case 'block_user':
-                    if (confirm(`确定屏蔽 ${target.name} 吗？屏蔽后将看不到对方的消息和位置。`)) {
+                    if (await showConfirm(`确定屏蔽 ${target.name} 吗？屏蔽后将看不到对方的消息和位置。`)) {
                         socket.emit('block_user', { targetId: target.id });
                     }
                     break;
@@ -2721,19 +3101,19 @@
                     openDMPanel(target.id, target.name);
                     break;
                 case 'admin_mute':
-                    const muteReason = prompt(`禁言 ${target.name}，输入原因（可选）：`);
+                    const muteReason = await showPrompt(`禁言 ${target.name}，输入原因（可选）：`, '原因（可选）');
                     socket.emit('admin_mute_user', { targetId: target.id, reason: muteReason || '' });
                     break;
                 case 'admin_unmute':
                     socket.emit('admin_unmute_user', { targetId: target.id });
                     break;
                 case 'admin_kick':
-                    const kickReason = prompt(`踢出 ${target.name}，输入原因（可选）：`);
+                    const kickReason = await showPrompt(`踢出 ${target.name}，输入原因（可选）：`, '原因（可选）');
                     socket.emit('admin_kick_user', { targetId: target.id, reason: kickReason || '' });
                     break;
                 case 'admin_ban':
-                    if (confirm(`确定封禁 ${target.name} 吗？封禁后该账号将无法登录。`)) {
-                        const banReason = prompt('输入封禁原因（可选）：');
+                    if (await showConfirm(`确定封禁 ${target.name} 吗？封禁后该账号将无法登录。`, true)) {
+                        const banReason = await showPrompt('输入封禁原因（可选）：', '原因（可选）');
                         socket.emit('admin_ban_user', { targetId: target.id, reason: banReason || '' });
                     }
                     break;
@@ -2755,12 +3135,82 @@
             $('dmMessages').innerHTML = '';
             socket.emit('get_dm_history', { targetId });
             $('dmInput').focus();
+            // 清除该用户的私信通知
+            const notif = document.querySelector(`[data-dm-from="${targetId}"]`);
+            if (notif) {
+                const id = notif.id;
+                notif.classList.add('removing');
+                if (dmNotifState.timers[targetId]) { clearTimeout(dmNotifState.timers[targetId]); delete dmNotifState.timers[targetId]; }
+                setTimeout(() => { if (notif.parentNode) notif.parentNode.removeChild(notif); delete dmNotifState.counts[targetId]; }, 300);
+            }
         }
 
         function closeDMPanel() {
             $('dmPanel').style.display = 'none';
             dmTargetId = null;
         }
+
+        const $ = id => document.getElementById(id);
+        const $$ = selector => document.querySelectorAll(selector);
+
+        // ==================== DM 面板拖拽 & 缩放（仅桌面端） ====================
+        (function initDMDragResize() {
+            const panel = $('dmPanel');
+            const header = panel.querySelector('.dm-header');
+            const resizeHandle = panel.querySelector('.dm-resize-handle');
+            let dragState = null, resizeState = null;
+
+            function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
+
+            // 拖拽
+            header.addEventListener('mousedown', (e) => {
+                if (MobileAdapter.isMobile) return;
+                if (e.target.closest('button')) return;
+                const rect = panel.getBoundingClientRect();
+                dragState = { startX: e.clientX, startY: e.clientY, origLeft: rect.left, origTop: rect.top };
+                panel.classList.add('dragging');
+                e.preventDefault();
+            });
+
+            // 缩放
+            resizeHandle.addEventListener('mousedown', (e) => {
+                if (MobileAdapter.isMobile) return;
+                const rect = panel.getBoundingClientRect();
+                resizeState = { startX: e.clientX, startY: e.clientY, origW: rect.width, origH: rect.height };
+                panel.classList.add('resizing');
+                e.preventDefault();
+                e.stopPropagation();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (dragState) {
+                    const dx = e.clientX - dragState.startX;
+                    const dy = e.clientY - dragState.startY;
+                    const rect = panel.getBoundingClientRect();
+                    const newLeft = clamp(dragState.origLeft + dx, 0, window.innerWidth - rect.width);
+                    const newTop = clamp(dragState.origTop + dy, 0, window.innerHeight - 60);
+                    panel.style.left = newLeft + 'px';
+                    panel.style.top = newTop + 'px';
+                    panel.style.right = 'auto';
+                    panel.style.bottom = 'auto';
+                }
+                if (resizeState) {
+                    const dx = e.clientX - resizeState.startX;
+                    const dy = e.clientY - resizeState.startY;
+                    const minW = parseInt(getComputedStyle(panel).minWidth) || 260;
+                    const minH = parseInt(getComputedStyle(panel).minHeight) || 300;
+                    const maxW = parseInt(getComputedStyle(panel).maxWidth) || 520;
+                    const maxH = parseInt(getComputedStyle(panel).maxHeight) || 680;
+                    panel.style.width = clamp(resizeState.origW + dx, minW, maxW) + 'px';
+                    panel.style.height = clamp(resizeState.origH + dy, minH, maxH) + 'px';
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (dragState) { dragState = null; panel.classList.remove('dragging'); }
+                if (resizeState) { resizeState = null; panel.classList.remove('resizing'); }
+            });
+        })();
 
         let pendingDeleteMessageId = null;
         function showDeleteKeyDialog(messageId) {
@@ -2879,6 +3329,76 @@
             container.appendChild(bubble);
             container.scrollTop = container.scrollHeight;
         }
+
+        // ==================== 私信通知 ====================
+        const dmNotifState = { counts: {}, timers: {} };
+        let dmNotifIdCounter = 0;
+
+        function ensureDmNotifContainer() {
+            let c = document.getElementById('dm-notification-container');
+            if (!c) {
+                c = document.createElement('div');
+                c.id = 'dm-notification-container';
+                document.body.appendChild(c);
+            }
+            return c;
+        }
+
+        function showDmNotification(fromId, fromName, fromAvatar, content) {
+            const panelVisible = $('dmPanel').style.display !== 'none';
+            if (panelVisible && dmTargetId === fromId) return;
+
+            const container = ensureDmNotifContainer();
+            dmNotifState.counts[fromId] = (dmNotifState.counts[fromId] || 0) + 1;
+            const count = dmNotifState.counts[fromId];
+
+            // 清除该用户旧的通知
+            if (dmNotifState.timers[fromId]) {
+                clearTimeout(dmNotifState.timers[fromId]);
+                const oldEl = container.querySelector(`[data-dm-from="${fromId}"]`);
+                if (oldEl) oldEl.remove();
+            }
+
+            const id = 'dm-notif-' + (++dmNotifIdCounter);
+            const el = document.createElement('div');
+            el.id = id;
+            el.className = 'dm-notification';
+            el.setAttribute('data-dm-from', fromId);
+
+            const avatarLetter = (fromName || '?').charAt(0).toUpperCase();
+            const avatarHtml = fromAvatar
+                ? `<img src="${escapeAttr(fromAvatar)}" alt="">`
+                : `<span>${avatarLetter}</span>`;
+
+            el.innerHTML =
+                '<div class="dm-notif-avatar">' + avatarHtml + '</div>' +
+                '<div class="dm-notif-body">' +
+                    '<div class="dm-notif-name">' + escapeHtml(fromName) + (count > 1 ? '<span class="dm-notif-badge">' + count + '</span>' : '') + '</div>' +
+                    '<div class="dm-notif-preview">' + escapeHtml(content) + '</div>' +
+                '</div>' +
+                '<span class="dm-notif-time">刚刚</span>' +
+                '<button class="dm-notif-close">&times;</button>';
+
+            el.addEventListener('click', (e) => {
+                if (e.target.classList.contains('dm-notif-close')) {
+                    dismissDmNotification(id, fromId); return;
+                }
+                dismissDmNotification(id, fromId);
+                openDMPanel(fromId, fromName);
+            });
+
+            container.appendChild(el);
+
+            dmNotifState.timers[fromId] = setTimeout(() => dismissDmNotification(id, fromId), 8000);
+        }
+
+        function dismissDmNotification(id, fromId) {
+            const el = document.getElementById(id);
+            if (!el || el.classList.contains('removing')) return;
+            el.classList.add('removing');
+            if (dmNotifState.timers[fromId]) { clearTimeout(dmNotifState.timers[fromId]); delete dmNotifState.timers[fromId]; }
+            setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); delete dmNotifState.counts[fromId]; }, 300);
+        }
         
         function sendDM() {
             const input = $('dmInput');
@@ -2942,8 +3462,6 @@
             });
         }
         
-        const $ = id => document.getElementById(id);
-        const $$ = selector => document.querySelectorAll(selector);
         const entryScreen = $('entryScreen');
         const messageInputContainer = $('messageInputContainer');
         const messageInput = $('messageInput');
@@ -3059,7 +3577,7 @@
         });
         
         socket.on('friend_added', data => {
-            alert(`${data.fromUser.nickname} 已添加你为好友`);
+            showToast(`${data.fromUser.nickname} 已添加你为好友`, 'success');
             socket.emit('get_friends');
         });
         
@@ -3068,14 +3586,15 @@
         });
         
         socket.on('friend_request', data => {
-            alert(`${data.fromUser.nickname} 向你发送了好友申请`);
+            showToast(`${data.fromUser.nickname} 向你发送了好友申请`, 'info');
             socket.emit('get_pending_requests');
             if ($('profilePanel').classList.contains('open')) renderPendingRequests(pendingRequests);
         });
         
         socket.on('friend_accepted', data => {
-            alert(`${data.toUser.nickname} 接受了你的好友申请`);
+            showToast(`${data.toUser.nickname} 接受了你的好友申请`, 'success');
             socket.emit('get_friends');
+            socket.emit('get_pending_requests');
         });
         
         socket.on('pending_requests', data => {
@@ -3083,11 +3602,19 @@
         });
         
         socket.on('friend_result', data => {
-            if (data.success && data.action === 'request_sent') alert('好友申请已发送！');
-            else if (data.success && data.action === 'accepted') { /* 已在friend_accepted处理 */ }
-            else if (data.success && data.action === 'rejected') { /* 静默处理 */ }
-            else if (data.success && data.action === 'removed') alert('已移除好友');
-            else if (!data.success) alert(data.error || '操作失败');
+            if (data.success && data.action === 'request_sent') showToast('好友申请已发送！', 'success');
+            else if (data.success && data.action === 'accepted') { socket.emit('get_pending_requests'); /* 已在friend_accepted处理 */ }
+            else if (data.success && data.action === 'rejected') { socket.emit('get_pending_requests'); /* 静默处理 */ }
+            else if (data.success && data.action === 'removed') showToast('已移除好友', 'info');
+            else if (!data.success) {
+                // 对方已向我发过申请时，用 info 提示并刷新待处理列表
+                if (data.reverse_request) {
+                    showToast(data.error || '对方已向你发送好友申请', 'info');
+                    socket.emit('get_pending_requests');
+                } else {
+                    showToast(data.error || '操作失败', 'error');
+                }
+            }
             socket.emit('get_friends');
         });
         
@@ -3097,15 +3624,18 @@
         
         socket.on('block_result', data => {
             if (data.success) {
-                if (data.action === 'unblocked') alert('已取消屏蔽');
-                else { alert('用户已被屏蔽'); state.otherUsers = state.otherUsers.filter(u => u.id !== data.targetId); }
+                if (data.action === 'unblocked') showToast('已取消屏蔽', 'info');
+                else { showToast('用户已被屏蔽', 'info'); state.otherUsers = state.otherUsers.filter(u => u.id !== data.targetId); }
                 updateOnlineCount();
             } else {
-                alert(data.error || '操作失败');
+                showToast(data.error || '操作失败', 'error');
             }
         });
 
-        socket.on('private_message', data => { addDmMessage(data, true); });
+        socket.on('private_message', data => {
+            addDmMessage(data, true);
+            showDmNotification(data.fromId, data.fromName, data.fromAvatar, data.content);
+        });
         socket.on('dm_cleared', data => {
             if (data.targetId === dmTargetId) $('dmMessages').innerHTML = '';
         });
@@ -3121,8 +3651,8 @@
         socket.on('admin_result', data => {
             if (data.success) {
                 if (data.action === 'delete_message') { state.messages = state.messages.filter(m => m.id !== pendingDeleteMessageId); }
-                if (data.action === 'cleanup') alert(`清理完成，共清理 ${data.cleaned} 个离线用户的数据`);
-                if (data.action === 'kick_guests') alert(`已注销 ${data.deleted} 个游客账号`);
+                if (data.action === 'cleanup') showToast(`清理完成，共清理 ${data.cleaned} 个离线用户的数据`, 'success');
+                if (data.action === 'kick_guests') showToast(`已注销 ${data.deleted} 个游客账号`, 'success');
                 if (data.action === 'mute') state.mutedUsers.add(data.targetId);
                 if (data.action === 'unmute') state.mutedUsers.delete(data.targetId);
                 if (data.action === 'set_admin' || data.action === 'unset_admin') {
@@ -3132,27 +3662,28 @@
                 }
             } else {
                 if (data.action === 'delete_message') { showDeleteKeyDialog(pendingDeleteMessageId); $('keyError').style.display = ''; }
-                else alert(data.error || '操作失败');
+                else showToast(data.error || '操作失败', 'error');
             }
         });
-        socket.on('became_admin', () => { state.isAdmin = true; alert('✅ 您已被设为管理员'); });
-        socket.on('lost_admin', () => { state.isAdmin = false; alert('⚠️ 您的管理员身份已被取消'); });
+        socket.on('became_admin', () => { state.isAdmin = true; showToast('您已被设为管理员', 'success', 5000); });
+        socket.on('lost_admin', () => { state.isAdmin = false; showToast('您的管理员身份已被取消', 'warning', 5000); });
 
         socket.on('message_deleted', data => {
             state.messages = state.messages.filter(m => m.id !== data.messageId);
+            msgMeasureCache.delete(data.messageId);
             const el = document.querySelector(`.msg-bubble[data-id="${data.messageId}"]`);
             if (el) el.remove();
         });
 
         socket.on('system_broadcast', data => { showBroadcast(data); });
 
-        socket.on('muted', data => { alert(`⚠️ 您已被管理员 ${data.adminName} 禁言${data.reason ? '，原因：' + data.reason : ''}`); });
-        socket.on('unmuted', () => { alert('✅ 您的禁言已被解除'); });
+        socket.on('muted', data => { showToast(`您已被管理员 ${data.adminName} 禁言${data.reason ? '，原因：' + data.reason : ''}`, 'error', 6000) });
+        socket.on('unmuted', () => { showToast('您的禁言已被解除', 'success', 5000); });
 
-        socket.on('kicked', data => { alert(`🚫 您被管理员 ${data.adminName} 踢出${data.reason ? '，原因：' + data.reason : ''}`); });
-        socket.on('banned', data => { alert(`🚫 您被管理员 ${data.adminName} 封禁${data.reason ? '，原因：' + data.reason : ''}`); });
+        socket.on('kicked', data => { showToast(`您被管理员 ${data.adminName} 踢出${data.reason ? '，原因：' + data.reason : ''}`, 'error', 6000) });
+        socket.on('banned', data => { showToast(`您被管理员 ${data.adminName} 封禁${data.reason ? '，原因：' + data.reason : ''}`, 'error', 6000) });
 
-        socket.on('messages_cleared', () => { state.messages = []; });
+        socket.on('messages_cleared', () => { state.messages = []; msgMeasureCache.clear(); });
 
         socket.on('user_info_detail', data => { renderUserInfo(data); });
 
@@ -3167,7 +3698,7 @@
 
         socket.on('error', data => {
             document.querySelectorAll('.enter-btn').forEach(btn => setButtonLoading(btn, false));
-            alert(data.message);
+            showToast(data.message, 'error');
         });
         
         let initialized = false;
@@ -3372,9 +3903,9 @@
             messageDetail.addEventListener('click', e => { if (e.target === messageDetail) messageDetail.classList.remove('active'); });
             
             $('dmCloseBtn').addEventListener('click', closeDMPanel);
-            $('dmClearBtn').addEventListener('click', () => {
+            $('dmClearBtn').addEventListener('click', async () => {
                 if (!dmTargetId) return;
-                if (confirm('确定清空与该用户的全部私聊记录吗？此操作不可恢复。')) {
+                if (await showConfirm('确定清空与该用户的全部私聊记录吗？此操作不可恢复。', true)) {
                     socket.emit('clear_dm_history', { targetId: dmTargetId });
                     $('dmMessages').innerHTML = '';
                 }
@@ -3399,18 +3930,18 @@
             });
             $('refreshUsersBtn').addEventListener('click', () => socket.emit('admin_get_all_users'));
             $('refreshListsBtn').addEventListener('click', () => socket.emit('admin_get_lists'));
-            $('cleanupBtn').addEventListener('click', () => {
-                if (confirm(`确定清理超过 ${$('cleanupDays').value} 天未活跃的用户数据吗？`)) {
+            $('cleanupBtn').addEventListener('click', async () => {
+                if (await showConfirm(`确定清理超过 ${$('cleanupDays').value} 天未活跃的用户数据吗？`)) {
                     socket.emit('admin_cleanup', { days: parseInt($('cleanupDays').value) || 30 });
                 }
             });
-            $('clearMsgBtn').addEventListener('click', () => {
-                if (confirm('确定清空所有聊天记录吗？此操作不可恢复！')) {
+            $('clearMsgBtn').addEventListener('click', async () => {
+                if (await showConfirm('确定清空所有聊天记录吗？此操作不可恢复！', true)) {
                     socket.emit('admin_clear_messages');
                 }
             });
-            $('kickGuestsBtn').addEventListener('click', () => {
-                if (confirm('确定注销所有游客账号吗？游客将被立即踢下线，其数据将被永久删除！')) {
+            $('kickGuestsBtn').addEventListener('click', async () => {
+                if (await showConfirm('确定注销所有游客账号吗？游客将被立即踢下线，其数据将被永久删除！', true)) {
                     socket.emit('admin_kick_guests');
                 }
             });
@@ -3518,6 +4049,7 @@
         const COORD_UPDATE_MS = 80;
         
         function gameLoop() {
+            if (canvas._paused) return;
             updateUserPosition();
             render();
             const now = performance.now();
@@ -3529,6 +4061,16 @@
             requestAnimationFrame(gameLoop);
         }
         
+        // 页面不可见时暂停渲染，节省资源
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                canvas._paused = true;
+            } else {
+                canvas._paused = false;
+                requestAnimationFrame(gameLoop);
+            }
+        });
+
         let lastMoveX = 0, lastMoveY = 0;
         let lastMoveTime = 0;
         const MOVE_THROTTLE_MS = 50;
@@ -3538,7 +4080,7 @@
             if (state.movementDisabled || !state.user.id) return;
             if (isTypingInInput()) return;
 
-            const speed = 5 / state.viewport.scale;
+            const baseSpeed = 4.5 / state.viewport.scale;
             let moved = false;
 
             // 检测是否为移动端，使用摇杆控制
@@ -3546,18 +4088,58 @@
                 const joystickInput = mobileAdapter.getJoystickInput();
 
                 if (joystickInput.x !== 0 || joystickInput.y !== 0) {
-                    state.user.x += joystickInput.x * speed;
-                    state.user.y += joystickInput.y * speed;
+                    state.user.x += joystickInput.x * baseSpeed;
+                    state.user.y += joystickInput.y * baseSpeed;
                     state.viewport.x = state.user.x;
                     state.viewport.y = state.user.y;
                     moved = true;
                 }
             } else {
-                // 桌面端：键盘控制
-                if (state.keys['w'] || state.keys['arrowup']) { state.user.y -= speed; state.viewport.y -= speed; moved = true; }
-                if (state.keys['s'] || state.keys['arrowdown']) { state.user.y += speed; state.viewport.y += speed; moved = true; }
-                if (state.keys['a'] || state.keys['arrowleft']) { state.user.x -= speed; state.viewport.x -= speed; moved = true; }
-                if (state.keys['d'] || state.keys['arrowright']) { state.user.x += speed; state.viewport.x += speed; moved = true; }
+                // 桌面端：加速度 + 阻尼 移动系统
+                const ACCEL = baseSpeed * 0.18;       // 每帧加速度（平滑起步）
+                const FRICTION = 0.82;                 // 阻尼系数（松开按键后滑行减速）
+                const MAX_SPEED = baseSpeed * 0.85;    // 最大速度（比原匀速稍慢，手感更稳）
+
+                let ax = 0, ay = 0;
+                if (state.keys['w'] || state.keys['arrowup']) ay -= 1;
+                if (state.keys['s'] || state.keys['arrowdown']) ay += 1;
+                if (state.keys['a'] || state.keys['arrowleft']) ax -= 1;
+                if (state.keys['d'] || state.keys['arrowright']) ax += 1;
+
+                // 归一化斜向移动速度（防止对角线更快）
+                if (ax !== 0 && ay !== 0) {
+                    const norm = 1 / Math.SQRT2;
+                    ax *= norm; ay *= norm;
+                }
+
+                // 施加加速度
+                state.velocity.x += ax * ACCEL;
+                state.velocity.y += ay * ACCEL;
+
+                // 无输入的轴施加阻尼（滑行减速）
+                if (ax === 0) state.velocity.x *= FRICTION;
+                if (ay === 0) state.velocity.y *= FRICTION;
+
+                // 限制最大速度
+                const spd = Math.hypot(state.velocity.x, state.velocity.y);
+                if (spd > MAX_SPEED) {
+                    const ratio = MAX_SPEED / spd;
+                    state.velocity.x *= ratio;
+                    state.velocity.y *= ratio;
+                }
+
+                // 低速阈值归零（避免无限小数值漂移）
+                if (Math.abs(state.velocity.x) < 0.005) state.velocity.x = 0;
+                if (Math.abs(state.velocity.y) < 0.005) state.velocity.y = 0;
+
+                // 应用位移
+                if (state.velocity.x !== 0 || state.velocity.y !== 0) {
+                    state.user.x += state.velocity.x;
+                    state.user.y += state.velocity.y;
+                    state.viewport.x = state.user.x;
+                    state.viewport.y = state.user.y;
+                    moved = true;
+                }
             }
 
             if (moved) {
@@ -3838,7 +4420,6 @@
                     ctx.fillText(user.name + ' 🛡️管理员', sux, suy + userSize + 5 * scale);
                 } else if (isFriend) {
                     ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${alpha})`;
-                    ctx.font = `${nameSize}px -apple-system, "Noto Sans SC", sans-serif`;
                     ctx.font = `${Math.round(nameSize)}px -apple-system, "Noto Sans SC", sans-serif`;
                     const nameText = user.name + ' ★';
                     ctx.fillText(nameText, sux, suy + userSize + 5 * scale);
