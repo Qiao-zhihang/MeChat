@@ -12,7 +12,19 @@ let saveTimer = null;
 const SAVE_INTERVAL = 2000;
 
 function hashPassword(password) {
-    return crypto.createHash('sha256').update('mechat_salt_' + password).digest('hex');
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+    return salt + ':' + hash;
+}
+
+function verifyPassword(password, stored) {
+    const [salt, hash] = stored.split(':');
+    if (!salt || !hash) {
+        // legacy SHA256 fallback
+        return crypto.createHash('sha256').update('mechat_salt_' + password).digest('hex') === stored;
+    }
+    const computed = crypto.scryptSync(password, salt, 64).toString('hex');
+    return computed === hash;
 }
 
 async function initDatabase() {
@@ -127,6 +139,16 @@ async function initDatabase() {
         )
     `);
 
+    db.run('PRAGMA foreign_keys = ON');
+    // 性能索引
+    try { db.run("CREATE INDEX IF NOT EXISTS idx_messages_author_id ON messages(author_id)"); } catch(e) {}
+    try { db.run("CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)"); } catch(e) {}
+    try { db.run("CREATE INDEX IF NOT EXISTS idx_messages_position ON messages(x, y)"); } catch(e) {}
+    try { db.run("CREATE INDEX IF NOT EXISTS idx_private_messages_pair ON private_messages(from_id, to_id)"); } catch(e) {}
+    try { db.run("CREATE INDEX IF NOT EXISTS idx_private_messages_timestamp ON private_messages(timestamp)"); } catch(e) {}
+    try { db.run("CREATE INDEX IF NOT EXISTS idx_friends_user ON friends(user_id)"); } catch(e) {}
+    try { db.run("CREATE INDEX IF NOT EXISTS idx_users_active ON users(last_active)"); } catch(e) {}
+    try { db.run("CREATE INDEX IF NOT EXISTS idx_blocks_user ON blocks(user_id)"); } catch(e) {}
     forceSave();
     console.log('数据库初始化完成');
     return db;
@@ -260,7 +282,7 @@ function verifyLogin(username, password) {
     const user = getUserByUsername(username);
     if (!user) return { success: false, error: '用户不存在' };
     if (!user.password_hash) return { success: false, error: '该账号未设置密码，请使用游客模式' };
-    if (user.password_hash !== hashPassword(password)) return { success: false, error: '密码错误' };
+    if (!verifyPassword(password, user.password_hash)) return { success: false, error: '密码错误' };
     return { success: true, user };
 }
 
@@ -323,6 +345,9 @@ function sendFriendRequest(fromId, toId) {
     if (isFriend(fromId, toId)) return { success: false, error: '已经是好友了' };
     const existing = db.exec(`SELECT status FROM friend_requests WHERE from_id = ? AND to_id = ?`, [fromId, toId]);
     if (existing.length > 0) return { success: false, error: '已发送过申请' };
+    // 检查对方是否已经向自己发了待处理的好友申请，避免互相申请
+    const reverse = db.exec(`SELECT status FROM friend_requests WHERE from_id = ? AND to_id = ? AND status = 'pending'`, [toId, fromId]);
+    if (reverse.length > 0) return { success: false, error: '对方已向你发送好友申请，请直接接受', reverse_request: true };
     try {
         db.run(`INSERT INTO friend_requests (from_id, to_id, status, created_at) VALUES (?, ?, 'pending', ?)`, [fromId, toId, Date.now()]);
         saveDatabase();
@@ -674,7 +699,6 @@ module.exports = {
     getBannedUsers,
     getMutedUsers,
     updateUserField,
-    cleanupInactiveUsers,
     deleteGuestUsers,
     getAllUsersInfo,
     blockUser,
