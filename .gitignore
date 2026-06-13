@@ -1,4 +1,4 @@
-# Dependencies
+﻿# Dependencies
 node_modules/
 
 # Database files
@@ -43,3 +43,6 @@ coverage/
 # Local tools / utilities (not part of the project)
 othertools/
 hash_gui.vbs
+
+# Other
+.uploads/
