@@ -77,6 +77,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            background: #f5f6f9;
         }
         
         .entry-card {
@@ -1572,7 +1573,7 @@
         <div class="entry-card">
             <h1 class="title font-orbitron">MeChat</h1>
             <p class="subtitle">探索 · 交流 · 连接</p>
-            <a class="project-link" href="/intro">了解 MeChat 项目介绍</a>
+            <a class="project-link" href="https://github.com/Qiao-zhihang/MeChat" target="_blank">了解 MeChat 项目介绍</a>
             
             <div class="auth-tabs">
                 <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">登录</button>
@@ -4096,9 +4097,9 @@
                 }
             } else {
                 // 桌面端：加速度 + 阻尼 移动系统
-                const ACCEL = baseSpeed * 0.18;       // 每帧加速度（平滑起步）
-                const FRICTION = 0.82;                 // 阻尼系数（松开按键后滑行减速）
-                const MAX_SPEED = baseSpeed * 0.85;    // 最大速度（比原匀速稍慢，手感更稳）
+                const ACCEL = baseSpeed * 0.26;       // 每帧加速度（更快起步）
+                const FRICTION = 0.84;                 // 阻尼系数（松开按键后滑行减速）
+                const MAX_SPEED = baseSpeed * 1.08;    // 最大速度（略超原匀速，补偿加减速的体感损失）
 
                 let ax = 0, ay = 0;
                 if (state.keys['w'] || state.keys['arrowup']) ay -= 1;
