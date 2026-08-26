@@ -1,0 +1,145 @@
+/* Responsive layout and touch controls. */
+
+        /* 移动端基础样式（仅保留必要的，不使用定位规则） */
+        @media (max-width: 768px) {
+            .entry-card {
+                padding: 20px;
+                margin: 10px;
+                max-width: calc(100% - 20px);
+                border-radius: 16px;
+            }
+
+            #entryScreen { padding: 16px; }
+            .entry-decoration { display: none; }
+            .portal-panel { width: 100%; max-width: 100%; right: -105%; padding: 16px; }
+            .portal-option-row .input-field { width: 132px; }
+            .portal-detail-actions { gap: 7px; }
+
+            .title { font-size: 1.2rem; letter-spacing: 2px; }
+            .subtitle { font-size: 0.7rem; margin-bottom: 14px; }
+            .avatar-upload { width: 60px; height: 60px; }
+            .input-field { padding: 12px; font-size: 16px; }
+            .enter-btn { padding: 13px; font-size: 0.9rem; }
+
+            .controls-hint { display: none !important; }
+
+            /* 面板基础样式 */
+            .profile-panel,
+            .friends-panel,
+            .admin-panel,
+            .dm-panel {
+                width: 100% !important;
+                left: 0 !important;
+                right: 0 !important;
+                border-radius: 16px 16px 0 0 !important;
+            }
+
+            .context-menu {
+                width: calc(100% - 32px);
+                max-width: 300px;
+                left: 16px !important;
+                right: 16px !important;
+            }
+
+            .dialog-overlay .dialog,
+            .modal-overlay .modal {
+                width: calc(100% - 32px);
+                max-width: 320px;
+            }
+            .dialog-overlay.active .dialog {
+                transform: translate(-50%, -50%) scale(1) !important;
+            }
+            .broadcast-toast { max-width: calc(100% - 32px); font-size: 0.82rem; }
+
+            /* 移动端消息输入框紧凑化 */
+            .message-input-wrapper {
+                padding: 4px 6px 4px 12px !important;
+                gap: 6px !important;
+            }
+            .message-input {
+                padding: 8px 10px !important;
+                font-size: 0.88rem !important;
+            }
+            .send-btn, .cancel-btn {
+                width: 34px !important;
+                height: 34px !important;
+                font-size: 14px !important;
+            }
+        }
+
+        /* 虚拟摇杆样式 */
+        #joystick-zone {
+            position: fixed;
+            z-index: 9999;
+            pointer-events: auto;
+            touch-action: none;
+            display: none;
+        }
+
+        #joystick-canvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            display: block;
+        }
+
+        /* 移动端操作按钮 - 精致设计 */
+        #mobile-actions {
+            position: fixed;
+            z-index: 9999;
+            pointer-events: auto;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .mobile-action-btn {
+            width: 52px;
+            height: 52px;
+            border-radius: 16px;
+            border: none;
+            background: linear-gradient(145deg, rgba(255,255,255,0.95), rgba(255,255,255,0.85));
+            box-shadow:
+                0 4px 12px rgba(0,0,0,0.08),
+                0 1px 3px rgba(0,0,0,0.06),
+                inset 0 1px 0 rgba(255,255,255,0.9);
+            color: #007aff;
+            cursor: pointer;
+            touch-action: manipulation;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s cubic-bezier(0.4,0,0.2,1);
+            font-size: 20px;
+            font-weight: 500;
+        }
+
+        .mobile-action-btn:hover {
+            background: linear-gradient(145deg, rgba(240,247,255,0.98), rgba(235,245,255,0.92));
+            box-shadow:
+                0 6px 20px rgba(0,122,255,0.15),
+                0 2px 6px rgba(0,0,0,0.08),
+                inset 0 1px 0 rgba(255,255,255,0.95);
+            transform: translateY(-2px);
+        }
+
+        .mobile-action-btn:active {
+            transform: scale(0.94) translateY(0);
+            background: linear-gradient(145deg, rgba(0,122,255,0.12), rgba(0,122,255,0.08));
+            box-shadow:
+                0 2px 8px rgba(0,0,0,0.06),
+                inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .mobile-action-btn.message-active {
+            background: linear-gradient(145deg, #007aff, #0056b3);
+            color: white;
+            box-shadow:
+                0 4px 16px rgba(0,122,255,0.35),
+                0 2px 6px rgba(0,0,0,0.1),
+                inset 0 1px 0 rgba(255,255,255,0.25);
+        }
+
+        .mobile-action-btn.message-active:active {
+            background: linear-gradient(145deg, #0056b3, #004494);
+        }

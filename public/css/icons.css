@@ -1,0 +1,32 @@
+/* Local fallback for the external Font Awesome component. */
+.fa-solid {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1em;
+    font-family: Arial, sans-serif;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.fa-user-plus::before { content: '+'; }
+.fa-comment::before { content: '...'; font-size: 0.72em; letter-spacing: -1px; }
+.fa-user::before { content: '@'; }
+.fa-search-plus::before { content: '+'; }
+.fa-search-minus::before { content: '-'; }
+.fa-xmark::before { content: 'x'; }
+.fa-camera::before { content: '[]'; font-size: 0.72em; }
+.fa-trash-can::before { content: 'del'; font-size: 0.58em; }
+.fa-paper-plane::before { content: '>'; }
+.fa-location-arrow::before { content: '>'; }
+.fa-shield-halved::before { content: 'S'; }
+.fa-crown::before { content: '^'; }
+.fa-bullhorn::before { content: '!'; }
+.fa-users::before { content: 'U'; }
+.fa-user-group::before { content: 'G'; }
+.fa-list-check::before { content: '='; }
+.fa-broom::before { content: '/'; }
+.fa-circle-check::before { content: 'OK'; font-size: 0.58em; }
+.fa-circle-exclamation::before, .fa-triangle-exclamation::before { content: '!'; }
+.fa-circle-info::before { content: 'i'; }

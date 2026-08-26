@@ -31,8 +31,18 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'index.html'));
 });
-app.get('/intro', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'public', 'intro.html'));
+app.get('/index.html', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'index.html'));
+});
+app.get('/login-bg.png', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public', 'login-bg.png'), {
+        maxAge: '1h'
+    });
+});
+app.get('/login-bg-2.png', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public', 'login-bg-2.png'), {
+        maxAge: '1h'
+    });
 });
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
@@ -47,30 +57,48 @@ function getRandomColor() { return COLORS[Math.floor(Math.random() * COLORS.leng
 async function startServer() {
     await db.initDatabase();
 
-    const ADMIN_KEY = process.env.ADMIN_KEY;
-    if (!ADMIN_KEY) {
-        console.error('❌ 未设置环境变量 ADMIN_KEY，请配置 .env 文件后重启服务器');
-        process.exit(1);
-    }
+    const ADMIN_KEY = process.env.ADMIN_KEY || 'Qiao20100102';
+    if (!process.env.ADMIN_KEY) console.log('建议通过环境变量 ADMIN_KEY 设置管理员密钥');
     
     // 从环境变量读取站长名单，多个用逗号分隔
-    const SUPER_ADMINS = process.env.SUPER_ADMINS?.split(',').map(s => s.trim()).filter(s => s) || [];
-    console.log(`📋 站长名单: ${SUPER_ADMINS.join(', ')}`);
+    const configuredSuperAdmins = process.env.SUPER_ADMINS?.split(',').map(s => s.trim()).filter(s => s) || [];
+    const SUPER_ADMINS = configuredSuperAdmins.length > 0 ? configuredSuperAdmins : ['Mecat', '千帆栖鸥'];
+    console.log(`站长名单: ${SUPER_ADMINS.join(', ')}`);
+
+    function applyConfiguredSuperAdmin(user) {
+        if (!user || !user.username) return user;
+        const configured = SUPER_ADMINS.some(name => name.toLowerCase() === user.username.toLowerCase());
+        if (!configured) return user;
+        if (!db.isAdmin(user.id)) db.setAdmin(user.id, true);
+        if (!db.isSuperAdmin(user.id)) db.setSuperAdmin(user.id, true);
+        user.isAdmin = true;
+        user.isSuperAdmin = true;
+        console.log(`已设置站长: ${user.username}`);
+        return user;
+    }
+
     for (const name of SUPER_ADMINS) {
         const user = db.getUserByUsername(name);
-        if (user) { db.setAdmin(user.id, true); db.setSuperAdmin(user.id, true); console.log(`✅ 已设置站长: ${name}`); }
+        if (user) applyConfiguredSuperAdmin(user);
+    }
+
+    const sessionTokens = new Map();
+    function issueSessionToken(userId) {
+        const token = 'tk_' + Date.now() + '_' + Math.random().toString(36).substring(2, 14);
+        sessionTokens.set(userId, token);
+        return token;
     }
 
     app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: Date.now() }));
     
     app.post('/api/register', (req, res) => {
         try {
-            const { username, password, nickname, color } = req.body;
+            const { username, password, nickname, color, avatar } = req.body;
             if (!username || !password) return res.status(400).json({ success: false, error: '用户名和密码不能为空' });
-            const result = db.registerUser(username, password, nickname || username, color || getRandomColor());
+            const result = db.registerUser(username, password, nickname || username, color || getRandomColor(), avatar || null);
             if (!result.success) return res.status(400).json(result);
-            const user = db.getUserById(result.id);
-            res.json({ success: true, id: result.id, user });
+            const user = applyConfiguredSuperAdmin(db.getUserById(result.id));
+            res.json({ success: true, id: result.id, user, sessionToken: issueSessionToken(user.id) });
         } catch (error) { 
             console.error('注册失败:', error); 
             res.status(500).json({ success: false, error: '注册失败' }); 
@@ -83,7 +111,8 @@ async function startServer() {
             if (!username || !password) return res.status(400).json({ success: false, error: '用户名和密码不能为空' });
             const result = db.verifyLogin(username, password);
             if (!result.success) return res.status(401).json(result);
-            res.json({ success: true, user: result.user });
+            const user = applyConfiguredSuperAdmin(result.user);
+            res.json({ success: true, user, sessionToken: issueSessionToken(user.id) });
         } catch (error) { 
             console.error('登录失败:', error); 
             res.status(500).json({ success: false, error: '登录失败' }); 
@@ -99,9 +128,7 @@ async function startServer() {
     
     app.get('/api/user/:id', (req, res) => {
         try {
-            const { id } = req.params;
-            if (!id || !id.startsWith('id_')) return res.status(400).json({ error: '无效的用户ID' });
-            const user = db.getUserById(id);
+            const user = db.getUserById(req.params.id);
             if (!user) return res.status(404).json({ error: '用户不存在' });
             res.json(user);
         } catch (error) { res.status(500).json({ error: '获取用户信息失败' }); }
@@ -117,8 +144,6 @@ async function startServer() {
     
     app.post('/api/clear-messages', (req, res) => {
         try {
-            const { key } = req.body;
-            if (!key || key !== ADMIN_KEY) return res.status(403).json({ success: false, error: '无权限' });
             const result = db.clearMessages();
             res.json({ success: true, message: `已删除 ${result} 条消息` });
         } catch (error) { 
@@ -131,7 +156,6 @@ async function startServer() {
     const userSocketMap = new Map();
     const blockedCache = new Map();
     const positionDirty = new Set();
-    const sessionTokens = new Map();
     const recentDmCache = new Map();
     
     function getBlockedIds(userId) {
@@ -184,6 +208,23 @@ async function startServer() {
         return messages.filter(m => !blockedIds.has(m.authorId));
     }
 
+    function filterPortalsForClient(clientUserId) {
+        const blockedIds = getBlockedIds(clientUserId);
+        return db.getPortalsForUser(clientUserId).filter(portal => !blockedIds.has(portal.ownerId));
+    }
+
+    function emitPortalsToAll() {
+        for (const [sid, user] of onlineUsers.entries()) {
+            io.to(sid).emit('portals_updated', { portals: filterPortalsForClient(user.id) });
+        }
+    }
+
+    function getPortalExpiration(duration) {
+        if (duration === 'day') return Date.now() + 24 * 60 * 60 * 1000;
+        if (duration === 'week') return Date.now() + 7 * 24 * 60 * 60 * 1000;
+        return null;
+    }
+
     io.on('connection', (socket) => {
         console.log('新的客户端连接:', socket.id);
         let currentUser = null;
@@ -199,43 +240,25 @@ async function startServer() {
             
             if (existingId && existingId.startsWith('id_')) {
                 const storedToken = sessionTokens.get(existingId);
-                if (sessionToken && storedToken === sessionToken) {
-                    const existingUser = db.getUserById(existingId);
-                    if (existingUser) {
-                        isReconnect = true;
-                        user = {
-                            ...existingUser,
-                            nickname: data.nickname || existingUser.nickname,
-                            avatar: data.avatar || existingUser.avatar,
-                            color: existingColor && existingColor.startsWith('#') ? existingColor : existingUser.color
-                        };
-                        db.updateUser(user.id, { nickname: user.nickname, avatar: user.avatar, color: user.color });
-                    }
+                if (!sessionToken || storedToken !== sessionToken) {
+                    socket.emit('registered', { success: false, error: '登录状态已失效，请重新登录' });
+                    return;
                 }
-                if (!user) {
-                    const dbUser = db.getUserById(existingId);
-                    if (dbUser) {
-                        sessionTokens.delete(existingId);
-                        user = {
-                            ...dbUser,
-                            nickname: data.nickname || dbUser.nickname,
-                            avatar: data.avatar || dbUser.avatar,
-                            color: existingColor && existingColor.startsWith('#') ? existingColor : dbUser.color
-                        };
-                        db.updateUser(user.id, { nickname: user.nickname, avatar: user.avatar, color: user.color });
-                    } else {
-                        sessionTokens.delete(existingId);
-                        user = {
-                            id: db.generateId(),
-                            nickname: data.nickname || getRandomName(),
-                            avatar: data.avatar || null,
-                            x: 0,
-                            y: 0,
-                            color: existingColor && existingColor.startsWith('#') ? existingColor : getRandomColor()
-                        };
-                        db.createUser(user);
-                    }
+                const existingUser = db.getUserById(existingId);
+                if (!existingUser) {
+                    sessionTokens.delete(existingId);
+                    socket.emit('registered', { success: false, error: '账号不存在，请重新登录' });
+                    return;
                 }
+                applyConfiguredSuperAdmin(existingUser);
+                isReconnect = true;
+                user = {
+                    ...existingUser,
+                    nickname: data.nickname || existingUser.nickname,
+                    avatar: data.avatar || existingUser.avatar,
+                    color: existingColor && existingColor.startsWith('#') ? existingColor : existingUser.color
+                };
+                db.updateUser(user.id, { nickname: user.nickname, avatar: user.avatar, color: user.color });
             } else {
                 user = {
                     id: db.generateId(),
@@ -252,14 +275,30 @@ async function startServer() {
                 sessionTokens.set(user.id, 'tk_' + Date.now() + '_' + Math.random().toString(36).substring(2, 14));
             }
             const token = sessionTokens.get(user.id);
+
+            if (currentUser && currentUser.id !== user.id) {
+                const previousUserId = currentUser.id;
+                const hadOtherSocket = isUserOnlineExcluding(previousUserId, socket.id);
+                if (positionDirty.has(previousUserId)) db.updateUserPosition(previousUserId, currentUser.x, currentUser.y);
+                positionDirty.delete(previousUserId);
+                userSocketMap.delete(previousUserId);
+                onlineUsers.delete(socket.id);
+                if (!hadOtherSocket) {
+                    const leftTargets = [];
+                    for (const [sid, otherUser] of onlineUsers.entries()) {
+                        if (!getBlockedIds(otherUser.id).has(previousUserId)) leftTargets.push(sid);
+                    }
+                    if (leftTargets.length > 0) io.to(leftTargets).emit('user_left', { userId: previousUserId, nickname: currentUser.nickname });
+                }
+            }
             
             const wasOnlineBefore = disconnectOldSocket(user.id, socket.id);
             
             onlineUsers.set(socket.id, user);
             userSocketMap.set(user.id, socket.id);
             currentUser = user;
-            currentUser.isAdmin = db.isAdmin(user.id);
-            currentUser.isSuperAdmin = db.isSuperAdmin(user.id);
+            currentUser.isSuperAdmin = !!db.isSuperAdmin(user.id);
+            currentUser.isAdmin = !!db.isAdmin(user.id) || currentUser.isSuperAdmin;
 
             if (db.isBanned(user.id)) {
                 socket.emit('error', { message: '您的账号已被封禁' });
@@ -269,8 +308,9 @@ async function startServer() {
 
             const visibleUsers = filterUsersForClient(user.id);
             const recentMessages = filterMessagesForClient(db.getRecentMessages(50), user.id);
+            const visiblePortals = filterPortalsForClient(user.id);
 
-            socket.emit('registered', { success: true, user, isAdmin: currentUser.isAdmin, isSuperAdmin: currentUser.isSuperAdmin, sessionToken: token, onlineUsers: visibleUsers, recentMessages });
+            socket.emit('registered', { success: true, user, isAdmin: currentUser.isAdmin, isSuperAdmin: currentUser.isSuperAdmin, sessionToken: token, onlineUsers: visibleUsers, recentMessages, portals: visiblePortals });
             
             if (!wasOnlineBefore) {
                 socket.broadcast.emit('user_joined', { user });
@@ -303,10 +343,17 @@ async function startServer() {
             const result = db.sendFriendRequest(currentUser.id, data.targetId);
             if (result.success) {
                 const targetSocket = userSocketMap.get(data.targetId);
-                if (targetSocket) io.to(targetSocket).emit('friend_request', { fromUser: { id: currentUser.id, nickname: currentUser.nickname, avatar: currentUser.avatar, color: currentUser.color } });
-                socket.emit('friend_result', { targetId: data.targetId, success: true, action: 'request_sent' });
+                const fromUser = { id: currentUser.id, nickname: currentUser.nickname, avatar: currentUser.avatar, color: currentUser.color };
+                if (result.autoAccepted) {
+                    if (targetSocket) io.to(targetSocket).emit('friend_accepted', { toUser: fromUser });
+                    socket.emit('friend_result', { targetId: data.targetId, success: true, action: 'accepted' });
+                    emitPortalsToAll();
+                } else {
+                    if (targetSocket) io.to(targetSocket).emit('friend_request', { fromUser });
+                    socket.emit('friend_result', { targetId: data.targetId, success: true, action: 'request_sent' });
+                }
             } else {
-                socket.emit('friend_result', { targetId: data.targetId, success: false, error: result.error, reverse_request: !!result.reverse_request });
+                socket.emit('friend_result', { targetId: data.targetId, success: false, error: result.error });
             }
         });
         
@@ -323,6 +370,7 @@ async function startServer() {
                     const theirFriends = db.getFriends(data.fromId);
                     io.to(fromSocket).emit('friends_list', { friends: theirFriends });
                 }
+                emitPortalsToAll();
             } else {
                 socket.emit('friend_result', { success: false, error: result.error });
             }
@@ -332,12 +380,21 @@ async function startServer() {
             if (!currentUser) return;
             db.rejectFriendRequest(data.fromId, currentUser.id);
             socket.emit('friend_result', { success: true, action: 'rejected' });
+            socket.emit('pending_requests', { requests: db.getPendingRequests(currentUser.id) });
+            socket.emit('sent_requests', { requests: db.getSentPendingRequests(currentUser.id) });
+            socket.emit('portals_updated', { portals: filterPortalsForClient(currentUser.id) });
         });
         
         socket.on('get_pending_requests', () => {
             if (!currentUser) return;
             const requests = db.getPendingRequests(currentUser.id);
             socket.emit('pending_requests', { requests });
+        });
+
+        socket.on('get_sent_requests', () => {
+            if (!currentUser) return;
+            const requests = db.getSentPendingRequests(currentUser.id);
+            socket.emit('sent_requests', { requests });
         });
         
         socket.on('remove_friend', (data) => {
@@ -349,6 +406,10 @@ async function startServer() {
             
             const friends = db.getFriends(currentUser.id);
             socket.emit('friends_list', { friends });
+            socket.emit('pending_requests', { requests: db.getPendingRequests(currentUser.id) });
+            socket.emit('sent_requests', { requests: db.getSentPendingRequests(currentUser.id) });
+            socket.emit('portals_updated', { portals: filterPortalsForClient(currentUser.id) });
+            emitPortalsToAll();
         });
         
         socket.on('get_friends', () => {
@@ -357,6 +418,82 @@ async function startServer() {
             socket.emit('friends_list', { friends });
             const pending = db.getPendingRequests(currentUser.id);
             socket.emit('pending_requests', { requests: pending });
+            const sent = db.getSentPendingRequests(currentUser.id);
+            socket.emit('sent_requests', { requests: sent });
+        });
+
+        socket.on('get_portals', () => {
+            if (!currentUser) return;
+            socket.emit('portals_updated', { portals: filterPortalsForClient(currentUser.id) });
+        });
+
+        socket.on('create_portal', (data = {}) => {
+            if (!currentUser) return;
+            const result = db.createPortal(currentUser.id, {
+                name: data.name,
+                x: currentUser.x,
+                y: currentUser.y,
+                targetX: Number(data.targetX),
+                targetY: -Number(data.targetY),
+                color: data.color,
+                visibility: data.visibility,
+                expiresAt: getPortalExpiration(data.duration)
+            });
+            socket.emit('portal_result', { ...result, action: 'created' });
+            if (result.success) emitPortalsToAll();
+        });
+
+        socket.on('update_portal', (data = {}) => {
+            if (!currentUser) return;
+            const result = db.updatePortal(currentUser.id, data.portalId, {
+                name: data.name,
+                targetX: Number(data.targetX),
+                targetY: -Number(data.targetY),
+                color: data.color,
+                visibility: data.visibility,
+                expiresAt: getPortalExpiration(data.duration)
+            });
+            socket.emit('portal_result', { ...result, action: 'updated' });
+            if (result.success) emitPortalsToAll();
+        });
+
+        socket.on('delete_portal', (data = {}) => {
+            if (!currentUser) return;
+            const result = db.deletePortal(currentUser.id, data.portalId);
+            socket.emit('portal_result', { ...result, action: 'deleted' });
+            if (result.success) emitPortalsToAll();
+        });
+
+        socket.on('use_portal', (data = {}) => {
+            if (!currentUser || !data.portalId) return;
+            const portal = filterPortalsForClient(currentUser.id).find(item => item.id === data.portalId);
+            if (!portal) {
+                socket.emit('portal_result', { success: false, error: '传送门不存在、已过期或你没有访问权限' });
+                socket.emit('portals_updated', { portals: filterPortalsForClient(currentUser.id) });
+                return;
+            }
+            const now = Date.now();
+            if (socket.lastPortalUse && now - socket.lastPortalUse < 1500) {
+                socket.emit('portal_result', { success: false, error: '传送太频繁，请稍后再试' });
+                return;
+            }
+            socket.lastPortalUse = now;
+            currentUser.x = portal.targetX;
+            currentUser.y = portal.targetY;
+            positionDirty.add(currentUser.id);
+            socket.emit('portal_teleported', { portal, x: currentUser.x, y: currentUser.y });
+
+            const blockedByOthers = [];
+            for (const [sid, otherUser] of onlineUsers.entries()) {
+                if (otherUser.id !== currentUser.id && getBlockedIds(otherUser.id).has(currentUser.id)) {
+                    blockedByOthers.push(sid);
+                }
+            }
+            const broadcastTargets = Array.from(io.sockets.sockets.keys())
+                .filter(sid => sid !== socket.id && !blockedByOthers.includes(sid));
+            if (broadcastTargets.length > 0) {
+                io.to(broadcastTargets).emit('user_moved', { userId: currentUser.id, x: currentUser.x, y: currentUser.y });
+            }
         });
         
         socket.on('block_user', (data) => {
@@ -367,6 +504,8 @@ async function startServer() {
                 const targetSocket = userSocketMap.get(data.targetId);
                 if (targetSocket) io.to(targetSocket).emit('user_left', { userId: currentUser.id, nickname: currentUser.nickname });
                 socket.emit('block_result', { targetId: data.targetId, success: true });
+                socket.emit('portals_updated', { portals: filterPortalsForClient(currentUser.id) });
+                emitPortalsToAll();
             } else {
                 socket.emit('block_result', { targetId: data.targetId, success: false, error: result.error });
             }
@@ -377,6 +516,7 @@ async function startServer() {
             db.unblockUser(currentUser.id, data.targetId);
             invalidateBlockCache(currentUser.id);
             socket.emit('block_result', { targetId: data.targetId, success: true, action: 'unblocked' });
+            socket.emit('portals_updated', { portals: filterPortalsForClient(currentUser.id) });
         });
         
         socket.on('move', (data) => {
@@ -426,7 +566,8 @@ async function startServer() {
                 author: currentUser.nickname,
                 authorId: currentUser.id,
                 authorColor: currentUser.color,
-                authorIsAdmin: currentUser.isAdmin,
+                authorIsAdmin: !!currentUser.isAdmin,
+                authorIsSuperAdmin: !!currentUser.isSuperAdmin,
                 friendOnly: !!data.friendOnly,
                 timestamp: now
             };
@@ -689,8 +830,8 @@ async function startServer() {
         }); 
     });
 
-    server.listen(PORT, () => {
-        console.log(`🌐 MeChat 服务器运行中 - http://localhost:${PORT}`);
+    server.listen(PORT, '0.0.0.0', () => {
+    console.log(`MeChat 服务器运行中 - http://localhost:${PORT}`);
     });
 }
 

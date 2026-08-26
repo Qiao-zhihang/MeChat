@@ -1,13 +1,12 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 
 # Database files
-data/
-*.db
-*.sqlite
-*.sqlite3
+data/*.db
+data/*.sqlite
+data/*.sqlite3
 
-# Environment files (keep .env.example)
+# Environment files
 .env
 .env.local
 .env.*.local
@@ -16,33 +15,17 @@ data/
 logs/
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
 # IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
 
 # OS files
 .DS_Store
 Thumbs.db
-desktop.ini
 
 # Build outputs
 dist/
 build/
-coverage/
-
-# Cache
-.cache/
-.npmrc
-
-# Local tools / utilities (not part of the project)
-othertools/
-hash_gui.vbs
-
-# Other
-.uploads/

@@ -1,11 +1,21 @@
-const CACHE_NAME = 'mechat-v1';
+const CACHE_NAME = 'mechat-v21';
 const urlsToCache = [
     '/',
     '/index.html',
-    '/public/og-image.png',
-    'https://cdn.tailwindcss.com',
-    'https://cdn.socket.io/4.7.2/socket.io.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
+    '/login-bg.png',
+    '/login-bg-2.png',
+    '/og-image.png',
+    '/manifest.json',
+    '/css/base.css',
+    '/css/icons.css',
+    '/css/responsive.css',
+    '/js/mobile.js',
+    '/js/effects.js',
+    '/js/state.js',
+    '/js/ui.js',
+    '/js/socket.js',
+    '/js/app.js',
+    '/socket.io/socket.io.min.js'
 ];
 
 // 安装事件 - 缓存核心资源
@@ -99,8 +109,8 @@ async function syncMessages() {
 self.addEventListener('push', (event) => {
     const options = {
         body: event.data ? event.data.text() : '您有新消息',
-        icon: '/public/icon-192.png',
-        badge: '/public/icon-72.png',
+            icon: '/og-image.png',
+            badge: '/og-image.png',
         vibrate: [100, 50, 100],
         data: {
             dateOfArrival: Date.now(),

@@ -12,19 +12,7 @@ let saveTimer = null;
 const SAVE_INTERVAL = 2000;
 
 function hashPassword(password) {
-    const salt = crypto.randomBytes(16).toString('hex');
-    const hash = crypto.scryptSync(password, salt, 64).toString('hex');
-    return salt + ':' + hash;
-}
-
-function verifyPassword(password, stored) {
-    const [salt, hash] = stored.split(':');
-    if (!salt || !hash) {
-        // legacy SHA256 fallback
-        return crypto.createHash('sha256').update('mechat_salt_' + password).digest('hex') === stored;
-    }
-    const computed = crypto.scryptSync(password, salt, 64).toString('hex');
-    return computed === hash;
+    return crypto.createHash('sha256').update('mechat_salt_' + password).digest('hex');
 }
 
 async function initDatabase() {
@@ -139,16 +127,24 @@ async function initDatabase() {
         )
     `);
 
-    db.run('PRAGMA foreign_keys = ON');
-    // 性能索引
-    try { db.run("CREATE INDEX IF NOT EXISTS idx_messages_author_id ON messages(author_id)"); } catch(e) {}
-    try { db.run("CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)"); } catch(e) {}
-    try { db.run("CREATE INDEX IF NOT EXISTS idx_messages_position ON messages(x, y)"); } catch(e) {}
-    try { db.run("CREATE INDEX IF NOT EXISTS idx_private_messages_pair ON private_messages(from_id, to_id)"); } catch(e) {}
-    try { db.run("CREATE INDEX IF NOT EXISTS idx_private_messages_timestamp ON private_messages(timestamp)"); } catch(e) {}
-    try { db.run("CREATE INDEX IF NOT EXISTS idx_friends_user ON friends(user_id)"); } catch(e) {}
-    try { db.run("CREATE INDEX IF NOT EXISTS idx_users_active ON users(last_active)"); } catch(e) {}
-    try { db.run("CREATE INDEX IF NOT EXISTS idx_blocks_user ON blocks(user_id)"); } catch(e) {}
+    db.run(`
+        CREATE TABLE IF NOT EXISTS portals (
+            id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            x REAL NOT NULL,
+            y REAL NOT NULL,
+            target_x REAL NOT NULL,
+            target_y REAL NOT NULL,
+            color TEXT NOT NULL,
+            visibility TEXT NOT NULL DEFAULT 'public',
+            expires_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
+
     forceSave();
     console.log('数据库初始化完成');
     return db;
@@ -282,11 +278,11 @@ function verifyLogin(username, password) {
     const user = getUserByUsername(username);
     if (!user) return { success: false, error: '用户不存在' };
     if (!user.password_hash) return { success: false, error: '该账号未设置密码，请使用游客模式' };
-    if (!verifyPassword(password, user.password_hash)) return { success: false, error: '密码错误' };
+    if (user.password_hash !== hashPassword(password)) return { success: false, error: '密码错误' };
     return { success: true, user };
 }
 
-function registerUser(username, password, nickname, color) {
+function registerUser(username, password, nickname, color, avatar) {
     if (getUserByUsername(username)) return { success: false, error: '用户名已存在' };
     if (!username || username.length < 2) return { success: false, error: '用户名至少2个字符' };
     if (!password || password.length < 4) return { success: false, error: '密码至少4个字符' };
@@ -297,9 +293,113 @@ function registerUser(username, password, nickname, color) {
         username,
         passwordHash: hashPassword(password),
         nickname: nickname || username,
-        color: color
+          color: color,
+          avatar: avatar || null
     });
     return { success: true, id };
+}
+
+function mapPortalRow(row, columns) {
+    const portal = {};
+    columns.forEach((column, index) => { portal[column] = row[index]; });
+    portal.isPermanent = portal.expiresAt === null || portal.expiresAt === undefined;
+    return portal;
+}
+
+function getPortalById(portalId) {
+    const results = db.exec(`
+        SELECT p.id, p.owner_id as ownerId, u.nickname as ownerName, u.avatar as ownerAvatar,
+               p.name, p.x, p.y, p.target_x as targetX, p.target_y as targetY,
+               p.color, p.visibility, p.expires_at as expiresAt,
+               p.created_at as createdAt, p.updated_at as updatedAt
+        FROM portals p JOIN users u ON p.owner_id = u.id
+        WHERE p.id = ?
+    `, [portalId]);
+    if (results.length === 0 || results[0].values.length === 0) return null;
+    return mapPortalRow(results[0].values[0], results[0].columns);
+}
+
+function getPortalsForUser(userId) {
+    const results = db.exec(`
+        SELECT p.id, p.owner_id as ownerId, u.nickname as ownerName, u.avatar as ownerAvatar,
+               p.name, p.x, p.y, p.target_x as targetX, p.target_y as targetY,
+               p.color, p.visibility, p.expires_at as expiresAt,
+               p.created_at as createdAt, p.updated_at as updatedAt
+        FROM portals p JOIN users u ON p.owner_id = u.id
+        WHERE (p.expires_at IS NULL OR p.expires_at > ?)
+          AND (
+              p.visibility = 'public'
+              OR p.owner_id = ?
+              OR EXISTS (
+                  SELECT 1 FROM friends f
+                  WHERE f.user_id = ? AND f.friend_id = p.owner_id
+              )
+          )
+        ORDER BY p.created_at ASC
+    `, [Date.now(), userId, userId]);
+    if (results.length === 0) return [];
+    return results[0].values.map(row => mapPortalRow(row, results[0].columns));
+}
+
+function createPortal(ownerId, data) {
+    const name = String(data.name || '').trim();
+    const color = String(data.color || '').trim().toLowerCase();
+    const visibility = data.visibility === 'friends' ? 'friends' : 'public';
+    const numbers = [data.x, data.y, data.targetX, data.targetY];
+    if (!name || name.length > 24) return { success: false, error: '传送门名称需为1-24个字符' };
+    if (!numbers.every(value => typeof value === 'number' && isFinite(value))) return { success: false, error: '坐标格式不正确' };
+    if (numbers.some(value => value < -100000 || value > 100000)) return { success: false, error: '坐标超出范围' };
+    if (!/^#[0-9a-f]{6}$/.test(color)) return { success: false, error: '传送门颜色不正确' };
+
+    const countResult = db.exec(`
+        SELECT COUNT(*) FROM portals
+        WHERE owner_id = ? AND (expires_at IS NULL OR expires_at > ?)
+    `, [ownerId, Date.now()]);
+    const activeCount = countResult.length > 0 ? countResult[0].values[0][0] : 0;
+    if (activeCount >= 3) return { success: false, error: '每位用户最多保留3个有效传送门' };
+
+    const now = Date.now();
+    const id = generateId();
+    db.run(`
+        INSERT INTO portals (id, owner_id, name, x, y, target_x, target_y, color, visibility, expires_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, ownerId, name, data.x, data.y, data.targetX, data.targetY, color, visibility, data.expiresAt || null, now, now]);
+    saveDatabase();
+    flushSave();
+    return { success: true, portal: getPortalById(id) };
+}
+
+function updatePortal(ownerId, portalId, data) {
+    const current = getPortalById(portalId);
+    if (!current) return { success: false, error: '传送门不存在' };
+    if (current.ownerId !== ownerId) return { success: false, error: '只能编辑自己的传送门' };
+
+    const name = String(data.name || '').trim();
+    const color = String(data.color || '').trim().toLowerCase();
+    const visibility = data.visibility === 'friends' ? 'friends' : 'public';
+    if (!name || name.length > 24) return { success: false, error: '传送门名称需为1-24个字符' };
+    if (![data.targetX, data.targetY].every(value => typeof value === 'number' && isFinite(value))) return { success: false, error: '坐标格式不正确' };
+    if ([data.targetX, data.targetY].some(value => value < -100000 || value > 100000)) return { success: false, error: '坐标超出范围' };
+    if (!/^#[0-9a-f]{6}$/.test(color)) return { success: false, error: '传送门颜色不正确' };
+
+    db.run(`
+        UPDATE portals
+        SET name = ?, target_x = ?, target_y = ?, color = ?, visibility = ?, expires_at = ?, updated_at = ?
+        WHERE id = ? AND owner_id = ?
+    `, [name, data.targetX, data.targetY, color, visibility, data.expiresAt || null, Date.now(), portalId, ownerId]);
+    saveDatabase();
+    flushSave();
+    return { success: true, portal: getPortalById(portalId) };
+}
+
+function deletePortal(ownerId, portalId) {
+    db.run(`DELETE FROM portals WHERE id = ? AND owner_id = ?`, [portalId, ownerId]);
+    const changes = db.exec('SELECT changes()');
+    const deleted = changes.length > 0 ? changes[0].values[0][0] : 0;
+    if (!deleted) return { success: false, error: '传送门不存在或无权删除' };
+    saveDatabase();
+    flushSave();
+    return { success: true };
 }
 
 function addFriend(userId, friendId) {
@@ -314,9 +414,18 @@ function addFriend(userId, friendId) {
     }
 }
 
+function clearFriendRequests(userId, friendId) {
+    db.run(`DELETE FROM friend_requests
+            WHERE (from_id = ? AND to_id = ?)
+               OR (from_id = ? AND to_id = ?)`,
+        [userId, friendId, friendId, userId]);
+}
+
 function removeFriend(userId, friendId) {
     db.run(`DELETE FROM friends WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)`, [userId, friendId, friendId, userId]);
+    clearFriendRequests(userId, friendId);
     saveDatabase();
+    flushSave();
     return { success: true };
 }
 
@@ -344,13 +453,23 @@ function sendFriendRequest(fromId, toId) {
     if (fromId === toId) return { success: false, error: '不能添加自己为好友' };
     if (isFriend(fromId, toId)) return { success: false, error: '已经是好友了' };
     const existing = db.exec(`SELECT status FROM friend_requests WHERE from_id = ? AND to_id = ?`, [fromId, toId]);
-    if (existing.length > 0) return { success: false, error: '已发送过申请' };
-    // 检查对方是否已经向自己发了待处理的好友申请，避免互相申请
-    const reverse = db.exec(`SELECT status FROM friend_requests WHERE from_id = ? AND to_id = ? AND status = 'pending'`, [toId, fromId]);
-    if (reverse.length > 0) return { success: false, error: '对方已向你发送好友申请，请直接接受', reverse_request: true };
-    try {
-        db.run(`INSERT INTO friend_requests (from_id, to_id, status, created_at) VALUES (?, ?, 'pending', ?)`, [fromId, toId, Date.now()]);
+    if (existing.length > 0 && existing[0].values[0][0] === 'pending') {
+        return { success: false, error: '已发送过申请' };
+    }
+    const reverse = db.exec(`SELECT status FROM friend_requests WHERE from_id = ? AND to_id = ?`, [toId, fromId]);
+    if (reverse.length > 0 && reverse[0].values[0][0] === 'pending') {
+        db.run(`UPDATE friend_requests SET status = 'accepted' WHERE (from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?)`, [toId, fromId, fromId, toId]);
+        const result = addFriend(fromId, toId);
+        if (!result.success) return result;
         saveDatabase();
+        return { success: true, autoAccepted: true };
+    }
+    try {
+        // Reuse the pair's primary key while resetting any old rejection/acceptance.
+        db.run(`INSERT OR REPLACE INTO friend_requests (from_id, to_id, status, created_at)
+                VALUES (?, ?, 'pending', ?)`, [fromId, toId, Date.now()]);
+        saveDatabase();
+        flushSave();
         return { success: true };
     } catch (e) {
         return { success: false, error: '发送失败' };
@@ -367,8 +486,9 @@ function acceptFriendRequest(fromId, toId) {
 }
 
 function rejectFriendRequest(fromId, toId) {
-    db.run(`UPDATE friend_requests SET status = 'rejected' WHERE from_id = ? AND to_id = ?`, [fromId, toId]);
+    db.run(`DELETE FROM friend_requests WHERE from_id = ? AND to_id = ?`, [fromId, toId]);
     saveDatabase();
+    flushSave();
     return { success: true };
 }
 
@@ -377,6 +497,22 @@ function getPendingRequests(userId) {
         SELECT u.id, u.username, u.nickname, u.avatar, u.color, r.from_id as requestId
         FROM friend_requests r JOIN users u ON r.from_id = u.id 
         WHERE r.to_id = ? AND r.status = 'pending'
+    `, [userId]);
+    if (results.length === 0) return [];
+    const columns = results[0].columns;
+    return results[0].values.map(row => {
+        const obj = {};
+        columns.forEach((col, i) => obj[col] = row[i]);
+        return obj;
+    });
+}
+
+function getSentPendingRequests(userId) {
+    const results = db.exec(`
+        SELECT u.id, u.username, u.nickname, u.avatar, u.color, u.bio, r.to_id as requestId, r.created_at
+        FROM friend_requests r JOIN users u ON r.to_id = u.id
+        WHERE r.from_id = ? AND r.status = 'pending'
+        ORDER BY r.created_at DESC
     `, [userId]);
     if (results.length === 0) return [];
     const columns = results[0].columns;
@@ -429,7 +565,7 @@ function isAdmin(userId) {
 }
 
 function setSuperAdmin(userId, isSuper) {
-    db.run(`UPDATE users SET is_super_admin = ? WHERE id = ?`, [isSuper ? 1 : 0, userId]);
+    db.run(`UPDATE users SET is_super_admin = ?, is_admin = CASE WHEN ? = 1 THEN 1 ELSE is_admin END WHERE id = ?`, [isSuper ? 1 : 0, isSuper ? 1 : 0, userId]);
     saveDatabase();
 }
 
@@ -536,6 +672,7 @@ function deleteGuestUsers() {
         db.run(`DELETE FROM friends WHERE user_id = ? OR friend_id = ?`, [id, id]);
         db.run(`DELETE FROM blocks WHERE user_id = ? OR blocked_id = ?`, [id, id]);
         db.run(`DELETE FROM muted_users WHERE user_id = ?`, [id]);
+        db.run(`DELETE FROM portals WHERE owner_id = ?`, [id]);
         db.run(`DELETE FROM users WHERE id = ?`, [id]);
     });
     saveDatabase();
@@ -556,6 +693,7 @@ function blockUser(userId, blockedId) {
     removeFriend(userId, blockedId);
     db.run(`INSERT OR IGNORE INTO blocks (user_id, blocked_id, created_at) VALUES (?, ?, ?)`, [userId, blockedId, Date.now()]);
     saveDatabase();
+    flushSave();
     return { success: true };
 }
 
@@ -600,7 +738,7 @@ function getMessages(options = {}) {
 
     let query = `SELECT m.id, m.user_id as userId, m.x, m.y, m.content, m.author, 
                         m.author_id as authorId, m.author_color as authorColor, 
-                        m.timestamp, u.is_admin as authorIsAdmin 
+                         m.timestamp, u.is_admin as authorIsAdmin, u.is_super_admin as authorIsSuperAdmin
                  FROM messages m LEFT JOIN users u ON m.author_id = u.id`;
     let params = [];
 
@@ -619,6 +757,8 @@ function getMessages(options = {}) {
     return results[0].values.map(row => {
         const obj = {};
         columns.forEach((col, i) => obj[col] = row[i]);
+        obj.authorIsSuperAdmin = obj.authorIsSuperAdmin === 1;
+        obj.authorIsAdmin = obj.authorIsAdmin === 1 || obj.authorIsSuperAdmin;
         return obj;
     });
 }
@@ -627,7 +767,7 @@ function getRecentMessages(limit = 50) {
     const results = db.exec(`
         SELECT m.id, m.user_id as userId, m.x, m.y, m.content, m.author, 
                m.author_id as authorId, m.author_color as authorColor, 
-               m.timestamp, u.is_admin as authorIsAdmin 
+               m.timestamp, u.is_admin as authorIsAdmin, u.is_super_admin as authorIsSuperAdmin
         FROM messages m LEFT JOIN users u ON m.author_id = u.id 
         ORDER BY m.timestamp DESC LIMIT ?
     `, [limit]);
@@ -637,6 +777,8 @@ function getRecentMessages(limit = 50) {
     return results[0].values.map(row => {
         const obj = {};
         columns.forEach((col, i) => obj[col] = row[i]);
+        obj.authorIsSuperAdmin = obj.authorIsSuperAdmin === 1;
+        obj.authorIsAdmin = obj.authorIsAdmin === 1 || obj.authorIsSuperAdmin;
         return obj;
     });
 }
@@ -668,6 +810,11 @@ module.exports = {
     getUserById,
     getUserByUsername,
     createUser,
+    getPortalById,
+    getPortalsForUser,
+    createPortal,
+    updatePortal,
+    deletePortal,
     updateUser,
     updateUserPosition,
     getOnlineUsers,
@@ -681,6 +828,7 @@ module.exports = {
     acceptFriendRequest,
     rejectFriendRequest,
     getPendingRequests,
+    getSentPendingRequests,
     savePrivateMessage,
     getPrivateMessages,
     clearPrivateMessages,
@@ -699,6 +847,7 @@ module.exports = {
     getBannedUsers,
     getMutedUsers,
     updateUserField,
+    cleanupInactiveUsers,
     deleteGuestUsers,
     getAllUsersInfo,
     blockUser,
